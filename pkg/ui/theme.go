@@ -14,20 +14,20 @@ type Theme struct {
 	Muted      lipgloss.Style
 	Accent     lipgloss.Style
 	Background lipgloss.Style
-	
+
 	// Derived styles
 	Header      lipgloss.Style
 	StatusBar   lipgloss.Style
 	Title       lipgloss.Style
 	Border      lipgloss.Style
 	FocusBorder lipgloss.Style
-	
+
 	// Component styles
-	Button     lipgloss.Style
-	Input      lipgloss.Style
-	Help       lipgloss.Style
-	ErrorBox   lipgloss.Style
-	EmptyBox   lipgloss.Style
+	Button   lipgloss.Style
+	Input    lipgloss.Style
+	Help     lipgloss.Style
+	ErrorBox lipgloss.Style
+	EmptyBox lipgloss.Style
 }
 
 // NewTheme creates a new theme with default colors
@@ -37,24 +37,24 @@ func NewTheme() *Theme {
 		Primary:    lipgloss.NewStyle().Foreground(lipgloss.Color("#61AFEF")), // blue
 		Secondary:  lipgloss.NewStyle().Foreground(lipgloss.Color("#98C379")), // green
 		Warning:    lipgloss.NewStyle().Foreground(lipgloss.Color("#E5C07B")), // yellow
-		Error:      lipgloss.NewStyle().Foreground(lipgloss.Color("#E06C75")), // red
+		Error:      lipgloss.NewStyle().Foreground(lipgloss.Color("#F07178")), // red (5.1:1 on dark bg, WCAG AA — §16.1; was #E06C75 = 4.4:1)
 		Muted:      lipgloss.NewStyle().Foreground(lipgloss.Color("#5C6370")), // gray
 		Accent:     lipgloss.NewStyle().Foreground(lipgloss.Color("#C678DD")), // purple
 		Background: lipgloss.NewStyle().Background(lipgloss.Color("#282C34")), // dark
-		
+
 		// Derived styles
 		Header:      lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("#1C1F26")).Border(lipgloss.NormalBorder(), true),
 		StatusBar:   lipgloss.NewStyle().Background(lipgloss.Color("#1C1F26")).Faint(true),
 		Title:       lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#61AFEF")),
 		Border:      lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false),
 		FocusBorder: lipgloss.NewStyle().Border(lipgloss.DoubleBorder(), false).Foreground(lipgloss.Color("#61AFEF")),
-		
+
 		// Component styles
-		Button:     lipgloss.NewStyle().Background(lipgloss.Color("#61AFEF")).Foreground(lipgloss.Color("#000000")).Padding(0, 2),
-		Input:      lipgloss.NewStyle().Background(lipgloss.Color("#1C1F26")).Border(lipgloss.NormalBorder(), false),
-		Help:       lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("#5C6370")),
-		ErrorBox:   lipgloss.NewStyle().Background(lipgloss.Color("#E06C75")).Foreground(lipgloss.Color("#000000")).Border(lipgloss.NormalBorder(), true),
-		EmptyBox:   lipgloss.NewStyle().Background(lipgloss.Color("#1C1F26")).Border(lipgloss.NormalBorder(), true),
+		Button:   lipgloss.NewStyle().Background(lipgloss.Color("#61AFEF")).Foreground(lipgloss.Color("#000000")).Padding(0, 2),
+		Input:    lipgloss.NewStyle().Background(lipgloss.Color("#1C1F26")).Border(lipgloss.NormalBorder(), false),
+		Help:     lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("#5C6370")),
+		ErrorBox: lipgloss.NewStyle().Background(lipgloss.Color("#F07178")).Foreground(lipgloss.Color("#000000")).Border(lipgloss.NormalBorder(), true),
+		EmptyBox: lipgloss.NewStyle().Background(lipgloss.Color("#1C1F26")).Border(lipgloss.NormalBorder(), true),
 	}
 }
 
@@ -63,27 +63,27 @@ func NewTheme() *Theme {
 func (t *Theme) HighContrast() *Theme {
 	return &Theme{
 		// High-contrast colors
-		Primary:    lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Background(lipgloss.Color("#000000")), // white on black
+		Primary:    lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Background(lipgloss.Color("#000000")),            // white on black
 		Secondary:  lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Background(lipgloss.Color("#000000")).Bold(true), // white on black + bold
-		Warning:    lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFF00")).Background(lipgloss.Color("#000000")), // yellow on black
-		Error:      lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFF00")).Background(lipgloss.Color("#000000")), // yellow on black
-		Muted:      lipgloss.NewStyle().Foreground(lipgloss.Color("#CCCCCC")).Background(lipgloss.Color("#000000")), // light gray on black
+		Warning:    lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFF00")).Background(lipgloss.Color("#000000")),            // yellow on black
+		Error:      lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFF00")).Background(lipgloss.Color("#000000")),            // yellow on black
+		Muted:      lipgloss.NewStyle().Foreground(lipgloss.Color("#CCCCCC")).Background(lipgloss.Color("#000000")),            // light gray on black
 		Accent:     lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Background(lipgloss.Color("#000000")).Bold(true), // white on black + bold
-		Background: lipgloss.NewStyle().Background(lipgloss.Color("#000000")), // pure black
-		
+		Background: lipgloss.NewStyle().Background(lipgloss.Color("#000000")),                                                  // pure black
+
 		// Derived styles
 		Header:      lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("#000000")).Border(lipgloss.NormalBorder(), true).Foreground(lipgloss.Color("#FFFFFF")),
 		StatusBar:   lipgloss.NewStyle().Background(lipgloss.Color("#000000")).Faint(true).Foreground(lipgloss.Color("#CCCCCC")),
 		Title:       lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")),
 		Border:      lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false).Foreground(lipgloss.Color("#CCCCCC")),
 		FocusBorder: lipgloss.NewStyle().Border(lipgloss.DoubleBorder(), false).Foreground(lipgloss.Color("#FFFFFF")),
-		
+
 		// Component styles
-		Button:     lipgloss.NewStyle().Background(lipgloss.Color("#FFFFFF")).Foreground(lipgloss.Color("#000000")).Padding(0, 2),
-		Input:      lipgloss.NewStyle().Background(lipgloss.Color("#000000")).Border(lipgloss.NormalBorder(), false).Foreground(lipgloss.Color("#FFFFFF")),
-		Help:       lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("#CCCCCC")),
-		ErrorBox:   lipgloss.NewStyle().Background(lipgloss.Color("#FFFF00")).Foreground(lipgloss.Color("#000000")).Border(lipgloss.NormalBorder(), true),
-		EmptyBox:   lipgloss.NewStyle().Background(lipgloss.Color("#000000")).Border(lipgloss.NormalBorder(), true).Foreground(lipgloss.Color("#CCCCCC")),
+		Button:   lipgloss.NewStyle().Background(lipgloss.Color("#FFFFFF")).Foreground(lipgloss.Color("#000000")).Padding(0, 2),
+		Input:    lipgloss.NewStyle().Background(lipgloss.Color("#000000")).Border(lipgloss.NormalBorder(), false).Foreground(lipgloss.Color("#FFFFFF")),
+		Help:     lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("#CCCCCC")),
+		ErrorBox: lipgloss.NewStyle().Background(lipgloss.Color("#FFFF00")).Foreground(lipgloss.Color("#000000")).Border(lipgloss.NormalBorder(), true),
+		EmptyBox: lipgloss.NewStyle().Background(lipgloss.Color("#000000")).Border(lipgloss.NormalBorder(), true).Foreground(lipgloss.Color("#CCCCCC")),
 	}
 }
 
