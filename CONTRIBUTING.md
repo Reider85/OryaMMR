@@ -83,6 +83,7 @@ Any change to the TUI must uphold all of these — a screen that fails one is a 
 
 - One logical change per PR; include the motivation and the trade-off you rejected ("I chose X because Y; Z was rejected because W").
 - Paste the [§21 self-review checklist](analytics/PROMPT-MVP.md) into the PR description with all items checked — CI enforces the automated subset (items 1, 3, 5, 7, 11, 13).
+- CI (`.github/workflows/ci.yml`) runs on every PR: `go vet`, the full test suite with the 80% coverage floor, UI benchmarks (≤100ms transition budget), and a binary smoke test.
 - Mark non-traceable files as `tooling` in the PR description.
 - Tests come with the code — never ship a behavior change without a test.
 

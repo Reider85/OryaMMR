@@ -407,7 +407,7 @@ When the human says "start MVP", your first action is:
 16. Run the §21 self-review checklist for each of the 3 screens; fix any failures.
 17. Write README.md.
 18. Tag `v0.4.1-mvp.1`.
-19. Hand off to ALPHA (PROMPT-ALPHA.md).
+19. Hand off to ALPHA (PROMPT-ALPHA.md). *(handoff record: [HANDOFF-MVP-ALPHA.md](./HANDOFF-MVP-ALPHA.md))*
 
 ---
 ## UI EXCELLENCE SECTIONS (NEW v0.4.1 — §15-§22)

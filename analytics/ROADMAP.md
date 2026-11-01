@@ -151,16 +151,18 @@ User-facing features in MVP:
 
 ### 2.2 Deliverables
 
-1. `caf` single binary for Linux/macOS/Windows.
-2. `.caf/` folder structure created by `caf init`.
+1. `caf` single binary for Linux/macOS/Windows. *(done — PROMPT-MVP §14 steps 2-5, released in step 18)*
+2. `.caf/` folder structure created by `caf init`. *(done — PROMPT-MVP §14 step 5)*
 3. `.git/hooks/pre-commit` universal hook installed. *(done — PROMPT-MVP §14 step 6)*
-4. TUI dashboard with 5 widgets.
-5. TUI onboarding wizard.
-6. TUI adapters manager with basic health check.
-7. `context.md` auto-generated.
+4. TUI dashboard with 5 widgets. *(done — PROMPT-MVP §14 step 13)*
+5. TUI onboarding wizard. *(done — PROMPT-MVP §14 step 13)*
+6. TUI adapters manager with basic health check. *(done — PROMPT-MVP §14 step 13)*
+7. `context.md` auto-generated. *(done — PROMPT-MVP §14 step 5)*
 8. Two Tier 1 explicit adapters (opencode, Claude Code) *(done — PROMPT-MVP §14 step 7)* + Universal LSP fallback *(done — PROMPT-MVP §14 step 8)*.
-9. **Security design document** (NEW v0.4-triz2): threat model draft, sandboxed parser design (not yet implemented, design only).
+9. **Security design document** (NEW v0.4-triz2): threat model draft, sandboxed parser design (not yet implemented, design only). *(done — ARCHITECT.md §8.1/§8.3, verified at MVP→ALPHA handoff)*
 10. **`caf doctor` basic** (NEW v0.4-triz2): 5 health checks (`.caf/` validity, config schema, sessions present, hook installed, LSP responds) *(done — PROMPT-MVP §14 step 9)*.
+
+**Handoff status (step 19):** all 10 MVP deliverables are done. CI is live (`.github/workflows/ci.yml`, added at handoff). See [HANDOFF-MVP-ALPHA.md](./HANDOFF-MVP-ALPHA.md).
 
 ### 2.3 Exit criteria
 
@@ -172,6 +174,8 @@ User-facing features in MVP:
 6. Adapter contract test suite passes (12 cases for 4 adapters).
 7. **(NEW v0.4-triz2)** `caf doctor` runs without errors on pilot repo; all 5 checks pass.
 8. **(NEW v0.4-triz2)** Security design document reviewed and approved (threat model drafted, sandbox spec written).
+
+**Status at MVP→ALPHA handoff (step 19):** criteria 4-8 are machine-verified (benchmarks, contract tests, `caf doctor`, ARCHITECT.md §8). Criteria 1-3 require field usage and remain **unverified** — the human tracks them; details in [HANDOFF-MVP-ALPHA.md](./HANDOFF-MVP-ALPHA.md) §3.
 
 ### 2.4 Security gate (NEW v0.4-triz2)
 
@@ -677,6 +681,8 @@ Each FUTURE item must satisfy these four promotion criteria:
 **Trigger:** MVP exit criteria met; universal fallback works for ≥3 different agents; ≥1 external early adopter using `caf` ≥2 weeks; adapter contract suite stable; **(NEW) security design document approved**.
 
 **Migration:** `caf init` adds `decisions/` dir; `caf migrate v0.2-to-v0.3`.
+
+**Handoff record (step 19, 2026-11-01):** MVP shipped as tag `v0.4.1-mvp.1`; all 10 deliverables done; UI exit criteria are CI-enforced; security design approved (ARCHITECT.md §8). Field-usage criteria (§2.3 items 1-3: 7-day pilot, 3+ agents, 1000-file LSP run) are **still open** — ALPHA development proceeds in parallel, human decision recorded (INV-RM-002, medium). Full pre-condition status: [HANDOFF-MVP-ALPHA.md](./HANDOFF-MVP-ALPHA.md). Migration (`caf init` + `decisions/`, `caf migrate`) is ALPHA step 17 — not yet implemented.
 
 ### 8.2 ALPHA → BETA
 
