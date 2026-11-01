@@ -20,8 +20,8 @@ import (
 	"github.com/Reider85/OryaCodeAuthorityFirst/internal/caf/storage"
 )
 
-// version — версия MVP-сборки; тег v0.4.1-mvp.1 ставится по exit criteria (§12).
-const version = "0.4.1-mvp.1-dev"
+// version — релизная версия MVP-сборки (тег v0.4.1-mvp.1, PROMPT-MVP §14 step 18).
+const version = "0.4.1-mvp.1"
 
 // rootCmd — базовая команда при вызове без подкоманд.
 var rootCmd = &cobra.Command{
@@ -763,7 +763,7 @@ func recommendedAdapter(detected []string) string {
 // runDashboardTUI: Launch TUI dashboard using direct model
 func runDashboardTUI(repoRoot string) error {
 	// Create dashboard model
-	model := NewDashboardModel(repoRoot, "0.4.1-mvp.1-dev")
+	model := NewDashboardModel(repoRoot, version)
 	
 	if _, err := runTUI(model, tea.WithAltScreen()); err != nil {
 		return fmt.Errorf("failed to run TUI: %w", err)

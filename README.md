@@ -5,7 +5,7 @@
 - **Single binary** — pure Go, no CGO, no runtime dependencies (Linux / macOS / Windows).
 - **Offline & LLM-free** — no cloud calls, no API keys; the default works without any LLM.
 - **Fail-safe hooks** — if `caf` is missing or crashes, git hooks warn and continue; commits are **never** blocked.
-- **MVP status** — `0.4.1-mvp.1-dev`; scope is frozen per [ROADMAP.md §2](analytics/ROADMAP.md).
+- **MVP status** — `0.4.1-mvp.1`; scope is frozen per [ROADMAP.md §2](analytics/ROADMAP.md).
 
 ## Features (MVP)
 
@@ -41,7 +41,7 @@ Verify:
 
 ```console
 $ caf --version
-caf version 0.4.1-mvp.1-dev
+caf version 0.4.1-mvp.1
 ```
 
 No CGO, no Node.js, no Python — `go build` is the only step (INV-PROMPT-MVP-002).
@@ -65,7 +65,7 @@ caf dashboard             # TUI hub
 ```console
 $ go build -o caf ./cmd/caf
 $ caf --version
-caf version 0.4.1-mvp.1-dev
+caf version 0.4.1-mvp.1
 ```
 
 ### 2. Initialize (10 s)
