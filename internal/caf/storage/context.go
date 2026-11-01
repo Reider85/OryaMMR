@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -111,30 +112,19 @@ func (g *ContextGenerator) GenerateContext(repoRoot string) error {
 
 // listRecentSessions returns recent session IDs sorted by start time
 func (g *ContextGenerator) listRecentSessions() ([]string, error) {
-	var sessions []Session
-	sessionIDs, err := ListSessions(g.sessionsDir)
+	// Параллельный bulk-load (§6 file ops): последовательный цикл LoadSession
+	// на 10k сессиях давал ~3s (шаг 15, enforcement TestBudgetFileOps10k).
+	sessions, err := NewManager(g.sessionsDir).LoadAllSessions()
 	if err != nil {
 		return nil, err
 	}
 
-	for _, sessionID := range sessionIDs {
-		session, err := LoadSession(filepath.Join(g.sessionsDir, sessionID))
-		if err != nil {
-			continue
-		}
-		sessions = append(sessions, *session)
-	}
+	// sort.Slice вместо O(n²) вставок: 10k сессий = 50M сравнений (§22.2).
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].StartedAt.After(sessions[j].StartedAt)
+	})
 
-	// Sort by start time (most recent first)
-	for i := 0; i < len(sessions); i++ {
-		for j := i + 1; j < len(sessions); j++ {
-			if sessions[i].StartedAt.Before(sessions[j].StartedAt) {
-				sessions[i], sessions[j] = sessions[j], sessions[i]
-			}
-		}
-	}
-
-	var sessionIDsSorted []string
+	sessionIDsSorted := make([]string, 0, len(sessions))
 	for _, session := range sessions {
 		sessionIDsSorted = append(sessionIDsSorted, session.SessionID)
 	}

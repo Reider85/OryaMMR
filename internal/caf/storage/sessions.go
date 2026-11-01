@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -97,6 +99,66 @@ func (m *Manager) LoadSession(sessionID string) (*Session, error) {
 // ListSessions returns all session IDs
 func (m *Manager) ListSessions() ([]string, error) {
 	return ListSessions(m.sessionsDir)
+}
+
+// LoadAllSessions загружает все сессии параллельно (worker-pool). Бюджет §6
+// «file ops на 10k репо <1s»: последовательный LoadSession-цикл даёт ~3s на
+// 10k YAML (§22.2: оптимизируем, не ослабляем бюджет). Невалидные файлы
+// пропускаются — семантика совпадает с последовательным циклом в dashboard
+// LoadData (pkg/ui/screens/dashboard.go:162).
+func (m *Manager) LoadAllSessions() ([]*Session, error) {
+	ids, err := m.ListSessions()
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	workers := runtime.NumCPU()
+	if workers > 16 {
+		workers = 16 // yaml.Unmarshal CPU-bound; больше ядер не помогает
+	}
+	if workers < 2 {
+		workers = 2
+	}
+	if workers > len(ids) {
+		workers = len(ids)
+	}
+
+	sessions := make([]*Session, len(ids))
+	var wg sync.WaitGroup
+	// Статические диапазоны вместо канала-на-индекс: 10k задач через канал —
+	// лишняя синхронизация на каждой итерации (§6 file ops <1s).
+	chunk := (len(ids) + workers - 1) / workers
+	for w := 0; w < workers; w++ {
+		start := w * chunk
+		end := start + chunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+		wg.Add(1)
+		go func(start, end int) {
+			defer wg.Done()
+			for i := start; i < end; i++ {
+				s, err := m.LoadSession(ids[i])
+				if err != nil {
+					continue // skip invalid (как в dashboard LoadData)
+				}
+				sessions[i] = s
+			}
+		}(start, end)
+	}
+	wg.Wait()
+
+	// Сжимаем: невалидные сессии не попадают в результат.
+	out := make([]*Session, 0, len(ids))
+	for _, s := range sessions {
+		if s != nil {
+			out = append(out, s)
+		}
+	}
+	return out, nil
 }
 
 // DeleteSession deletes a session file

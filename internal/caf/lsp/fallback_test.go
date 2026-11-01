@@ -96,21 +96,22 @@ func readLSPFrame(r *bufio.Reader) ([]byte, error) {
 }
 
 // installFakeGopls кладёт обёртку test-бинарника под именем gopls в PATH.
-func installFakeGopls(t *testing.T) {
-	t.Helper()
-	dir := t.TempDir()
+// Принимает testing.TB — работает и в тестах, и в бенчмарках (шаг 15).
+func installFakeGopls(tb testing.TB) {
+	tb.Helper()
+	dir := tb.TempDir()
 	if runtime.GOOS == "windows" {
 		script := "@echo off\r\nset CAF_FAKE_GOPLS=1\r\n\"" + os.Args[0] + "\"\r\n"
 		if err := os.WriteFile(filepath.Join(dir, "gopls.bat"), []byte(script), 0644); err != nil {
-			t.Fatal(err)
+			tb.Fatal(err)
 		}
 	} else {
 		script := "#!/bin/sh\nexport CAF_FAKE_GOPLS=1\nexec \"" + os.Args[0] + "\"\n"
 		if err := os.WriteFile(filepath.Join(dir, "gopls"), []byte(script), 0755); err != nil {
-			t.Fatal(err)
+			tb.Fatal(err)
 		}
 	}
-	t.Setenv("PATH", dir)
+	tb.Setenv("PATH", dir)
 }
 
 // TestLazyLoadWithoutGopls — пустой $PATH: LazyLoad/Start возвращают ошибку

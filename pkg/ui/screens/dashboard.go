@@ -145,25 +145,16 @@ func (d *DashboardScreen) Init() tea.Cmd {
 // LoadData loads dashboard data
 func (d *DashboardScreen) LoadData() tea.Cmd {
 	return func() tea.Msg {
-		// Load sessions
-		sessionsDir := filepath.Join(d.RepoRoot, ".caf", "sessions")
-		sessionManager := storage.NewManager(sessionsDir)
-		sessionIDs, err := sessionManager.ListSessions()
-		// errors.Is, а НЕ os.IsNotExist: ошибки storage обёрнуты через %w,
-		// os.IsNotExist их не раскапывает — свежий репо падал в Error state
-		// вместо Empty-CTA (§2.6, INV-PROMPT-MVP-006).
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return DashboardLoadError{Err: fmt.Errorf("failed to load sessions: %w", err)}
-		}
-		
-		// Convert session IDs to Session objects
-		var sessions []*storage.Session
-		for _, id := range sessionIDs {
-			session, err := sessionManager.LoadSession(id)
-			if err == nil {
-				sessions = append(sessions, session)
-			}
-		}
+	// Load sessions (параллельный bulk-load — бюджет §6 file ops <1s на 10k)
+	sessionsDir := filepath.Join(d.RepoRoot, ".caf", "sessions")
+	sessionManager := storage.NewManager(sessionsDir)
+	// errors.Is, а НЕ os.IsNotExist: ошибки storage обёрнуты через %w,
+	// os.IsNotExist их не раскапывает — свежий репо падал в Error state
+	// вместо Empty-CTA (§2.6, INV-PROMPT-MVP-006).
+	sessions, err := sessionManager.LoadAllSessions()
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return DashboardLoadError{Err: fmt.Errorf("failed to load sessions: %w", err)}
+	}
 		
 		// Load manifest
 		manifestFile := storage.GetManifestPath(d.RepoRoot)
