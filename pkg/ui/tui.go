@@ -90,10 +90,11 @@ type AppModel struct {
 	Width         int
 	Height        int
 	Quit          bool
+	RepoRoot      string // Repository root path for screens
 }
 
 // NewAppModel creates a new application model
-func NewAppModel() *AppModel {
+func NewAppModel(repoRoot string) *AppModel {
 	theme := NewTheme()
 	keys := NewKeys()
 	a11y := NewA11y(NewAccessibilityConfig(), theme, keys)
@@ -113,6 +114,7 @@ func NewAppModel() *AppModel {
 		Width:        0,
 		Height:       0,
 		Quit:         false,
+		RepoRoot:     repoRoot,
 	}
 }
 

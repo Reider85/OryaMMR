@@ -18,7 +18,6 @@ import (
 	"github.com/Reider85/OryaCodeAuthorityFirst/internal/caf/doctor"
 	"github.com/Reider85/OryaCodeAuthorityFirst/internal/caf/hooks"
 	"github.com/Reider85/OryaCodeAuthorityFirst/internal/caf/storage"
-	"github.com/Reider85/OryaCodeAuthorityFirst/pkg/ui"
 )
 
 // version — версия MVP-сборки; тег v0.4.1-mvp.1 ставится по exit criteria (§12).
@@ -50,6 +49,11 @@ Example:
 		if err != nil {
 			return err
 		}
+		
+		if flagBool(cmd, "tui") {
+			return runInitTUI(repoRoot)
+		}
+		
 		return runInit(repoRoot, flagBool(cmd, "auto-detect"), flagString(cmd, "adapters"))
 	},
 }
@@ -160,10 +164,30 @@ var dashboardCmd = &cobra.Command{
 recent decisions, cross-repo status.
 
 Example:
-  caf dashboard`,
+  caf dashboard
+  caf dashboard --tui`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runDashboard()
+		repoRoot := flagString(cmd, "repo")
+		if repoRoot == "" {
+			repoRoot = "."
+		}
+		abs, err := resolveRepo(repoRoot)
+		if err != nil {
+			return err
+		}
+		
+		// Check for TUI flag
+		if tui, _ := cmd.Flags().GetBool("tui"); tui {
+			return runDashboardTUI(abs)
+		}
+		
+		return runDashboard(abs)
 	},
+}
+
+func init() {
+	// Add TUI flag to dashboard command
+	dashboardCmd.Flags().BoolP("tui", "t", false, "Launch TUI dashboard")
 }
 
 // adaptersCmd — родительская команда для адаптеров (FR-ADP-001/004/005).
@@ -179,8 +203,20 @@ var adaptersListCmd = &cobra.Command{
 	Short: "List adapters with capability matrix and detection status",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if flagBool(cmd, "tui") {
+			repoRoot := "."
+			abs, err := resolveRepo(repoRoot)
+			if err != nil {
+				return err
+			}
+			return runAdaptersTUI(abs)
+		}
 		return runAdaptersList()
 	},
+}
+
+func init() {
+	adaptersListCmd.Flags().Bool("tui", false, "Launch TUI adapter manager")
 }
 
 // doctorCmd — caf doctor: 5 базовых health checks (FR-OBS-004 partial).
@@ -241,6 +277,7 @@ func main() {
 	initCmd.Flags().StringP("repo", "r", "", "Repository path (default: current directory)")
 	initCmd.Flags().Bool("auto-detect", false, "Detect installed agents and report recommended adapter")
 	initCmd.Flags().String("adapters", "", "Comma-separated adapter IDs to install (e.g. opencode,claude-code)")
+	initCmd.Flags().Bool("tui", false, "Launch interactive TUI onboarding wizard")
 
 	hookCmd.Flags().String("repo", "", "Repository path (default: current directory)")
 	hookCmd.Flags().String("session", "", "Session ID")
@@ -596,12 +633,9 @@ func runContext(repoRoot string, refresh bool) error {
 }
 
 // runDashboard: TUI-хаб (bubbletea). Ошибка запуска TUI — фатальна (это не hook).
-func runDashboard() error {
-	program := tea.NewProgram(ui.NewAppModel())
-	if _, err := program.Run(); err != nil {
-		return fmt.Errorf("dashboard failed: %w", err)
-	}
-	return nil
+func runDashboard(repoRoot string) error {
+	// Use direct dashboard model to avoid import cycle issue
+	return runDashboardDirect(repoRoot)
 }
 
 // runAdaptersList: capability matrix + статус детекции (текстовая форма UI.md §7).
@@ -709,4 +743,19 @@ func recommendedAdapter(detected []string) string {
 		}
 	}
 	return ""
+}
+
+// runDashboardTUI: Launch TUI dashboard using direct model
+func runDashboardTUI(repoRoot string) error {
+	// Create dashboard model
+	model := NewDashboardModel(repoRoot, "0.4.1-mvp.1-dev")
+	
+	// Start the tea program
+	program := tea.NewProgram(model, tea.WithAltScreen())
+	
+	if _, err := program.Run(); err != nil {
+		return fmt.Errorf("failed to run TUI: %w", err)
+	}
+	
+	return nil
 }

@@ -56,6 +56,11 @@ func (sm *StateMachine) Current() State {
 	return sm.current
 }
 
+// SetState sets the current state directly (for MVP)
+func (sm *StateMachine) SetState(state State) {
+	sm.current = state
+}
+
 // Error returns the error message if in error state
 func (sm *StateMachine) Error() string {
 	return sm.errMsg
