@@ -48,6 +48,9 @@ type OnboardingScreen struct {
 	// Loading states
 	Loading          bool
 	LoadError        error
+
+	// Help overlay (§18.4: ? показывает help на каждом экране)
+	ShowHelp bool
 }
 
 // Step represents a wizard step
@@ -229,13 +232,40 @@ func (o *OnboardingScreen) Update(msg tea.Msg) (ui.Screen, tea.Cmd) {
 
 // handleKey handles keyboard input
 func (o *OnboardingScreen) handleKey(msg tea.KeyMsg) (ui.Screen, tea.Cmd) {
+	// Help-open режим: ?/Esc закрывают оверлей, q/Ctrl+C выходят, остальные
+	// клавиши не действуют, пока открыт help (нет магии под оверлеем).
+	if o.ShowHelp {
+		switch {
+		case runeOf(msg) == '?', msg.Type == tea.KeyEsc:
+			o.ShowHelp = false
+			return o, nil
+		case runeOf(msg) == 'q', msg.Type == tea.KeyCtrlC:
+			return o, tea.Quit
+		}
+		return o, nil
+	}
+
 	// Печатные клавиши — через runeOf: bubbletea кодирует их как KeyRunes (§18.4).
-	switch runeOf(msg) {
+	switch r := runeOf(msg); r {
 	case 'q':
 		return o, tea.Quit
 	case '?':
-		// Show help overlay
+		o.ShowHelp = true
 		return o, nil
+	case 'r':
+		// ErrorBox обещает "[r] retry" (INV-UI-010) — retry текущего шага.
+		return o, o.StartStep(o.CurrentStep)
+	case 'i', 'c':
+		// [i]/[c] подсказаны на шаге детекции и в empty-CTA (§2.7):
+		// выбор агента для установки, дальше — симуляция установки (шаг 3).
+		if o.CurrentStep != 2 && o.StateMachine.Current() != ui.StateEmpty {
+			return o, nil
+		}
+		id := "opencode"
+		if r == 'c' {
+			id = "claude-code"
+		}
+		return o, o.startInstallWith(id)
 	}
 
 	switch msg.Type {
@@ -255,6 +285,14 @@ func (o *OnboardingScreen) handleKey(msg tea.KeyMsg) (ui.Screen, tea.Cmd) {
 	}
 	
 	return o, nil
+}
+
+// startInstallWith — [i]/[c] из empty-CTA или шага детекции: фиксирует выбор
+// агента и запускает установку (шаг 3). Empty → Loading разрешён (§16.4).
+func (o *OnboardingScreen) startInstallWith(id string) tea.Cmd {
+	o.DetectedAdapters = []string{id}
+	o.Loading = false
+	return o.StartStep(3)
 }
 
 // handleDetectionComplete handles detection completion
@@ -306,6 +344,13 @@ func (o *OnboardingScreen) handleSummaryComplete(msg SummaryComplete) {
 func (o *OnboardingScreen) View() string {
 	// Update status bar
 	o.StatusBar.SetRefreshCompleted()
+	
+	// Help overlay (§18.4): ? на каждом экране показывает все клавиши.
+	// Header и StatusBar — «священные» (§15.2), оверлей заменяет только контент.
+	if o.ShowHelp {
+		overlay := components.NewHelpOverlay("onboarding", o.helpSections(), o.Theme)
+		return components.Header(o.Version, "onboarding") + "\n" + overlay.View() + "\n" + o.StatusBar.Render()
+	}
 	
 	// 5-state routing (INV-PROMPT-MVP-006): error/empty/partial перекрывают
 	// пошаговый рендер; loading/success идут по CurrentStep (шаги сами
@@ -473,6 +518,26 @@ func (o *OnboardingScreen) renderSummary() string {
 	summary += "Press [Enter] to complete setup\n"
 	
 	return components.Header(o.Version, "onboarding") + "\n" + summary + "\n" + o.StatusBar.Render()
+}
+
+// helpSections — все живые клавиши визарда для help-оверлея (§18.4).
+// Перечисляются только реально обрабатываемые клавиши — help не врёт (INV-UI-009).
+func (o *OnboardingScreen) helpSections() []components.HelpSection {
+	return []components.HelpSection{
+		{Title: "Navigation", Entries: []components.HelpEntry{
+			{Key: "Enter", Desc: "next step"},
+			{Key: "Esc", Desc: "back (quit on welcome)"},
+		}},
+		{Title: "Actions", Entries: []components.HelpEntry{
+			{Key: "r", Desc: "retry current step"},
+			{Key: "q", Desc: "quit"},
+			{Key: "?", Desc: "toggle this help"},
+		}},
+		{Title: "Screen-specific", Entries: []components.HelpEntry{
+			{Key: "i", Desc: "install opencode (detection step)"},
+			{Key: "c", Desc: "install Claude Code (detection step)"},
+		}},
+	}
 }
 
 // GetID returns the screen ID

@@ -226,10 +226,43 @@ func TestDashboardKeys(t *testing.T) {
 		}
 	})
 
-	t.Run("? returns help command", func(t *testing.T) {
+	t.Run("? opens help overlay with all keybindings (§18.4)", func(t *testing.T) {
 		d := newDashboardFixture(t)
 		if cmd := keyRune(d, '?'); cmd != nil {
-			t.Error("? currently stubs help overlay with nil cmd (§18.4 overlay — step 16)")
+			t.Error("help is an in-screen overlay — ? must not spawn a command")
+		}
+		if !d.ShowHelp {
+			t.Fatal("? must open the help overlay")
+		}
+		view := d.View()
+		for _, want := range []string{"? Help — dashboard", "Navigation:", "Actions:", "[?] or [Esc] close"} {
+			if !strings.Contains(view, want) {
+				t.Errorf("help overlay missing %q (INV-UI-010)", want)
+			}
+		}
+		// Живые клавиши экрана обязаны быть в help — help не врёт (INV-UI-009).
+		for _, key := range []string{"Tab", "Shift+Tab", "r", "q"} {
+			if !strings.Contains(view, key) {
+				t.Errorf("help overlay missing keybinding %q", key)
+			}
+		}
+		// Глоссарий аббревиатур (§19.5: no jargon without definition).
+		for _, term := range []string{"ACS", "LSP", "MCP"} {
+			if !strings.Contains(view, term) {
+				t.Errorf("help overlay missing glossary term %q", term)
+			}
+		}
+
+		_, _ = d.Update(tea.KeyMsg{Type: tea.KeyEsc})
+		if d.ShowHelp {
+			t.Error("Esc must close the help overlay (no dead-end, INV-UI-010)")
+		}
+	})
+
+	t.Run("q quits (statusbar promises [q] quit, §18.4)", func(t *testing.T) {
+		d := newDashboardFixture(t)
+		if _, ok := keyRune(d, 'q')().(tea.QuitMsg); !ok {
+			t.Error("q must produce tea.QuitMsg")
 		}
 	})
 

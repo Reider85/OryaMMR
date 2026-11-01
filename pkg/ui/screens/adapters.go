@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -36,7 +37,14 @@ type AdaptersScreen struct {
 	DetailAdapter  *caf.Adapter
 	InstallError   error
 	DetectError    error
-	
+
+	// Failed — ID адаптеров, установка которых не удалась: из них собирается
+	// PartialBanner (§16.3), а не хардкод (INV-PROMPT-MVP-006).
+	Failed []string
+
+	// Help overlay (§18.4: ? показывает help на каждом экране)
+	ShowHelp bool
+
 	// Loading
 	Loading       bool
 	LoadError     error
@@ -140,6 +148,12 @@ func (a *AdaptersScreen) Update(msg tea.Msg) (ui.Screen, tea.Cmd) {
 		return a.handleKey(msg)
 	case AdaptersDataLoaded:
 		a.handleDataLoaded(msg)
+	case InstallSuccess:
+		a.handleInstallSuccess(msg)
+	case InstallError:
+		a.handleInstallError(msg)
+	case AutoDetectComplete:
+		a.handleAutoDetectComplete(msg)
 	case tea.WindowSizeMsg:
 		// Handle resize if needed
 	}
@@ -152,6 +166,19 @@ func (a *AdaptersScreen) Update(msg tea.Msg) (ui.Screen, tea.Cmd) {
 
 // handleKey handles keyboard input
 func (a *AdaptersScreen) handleKey(msg tea.KeyMsg) (ui.Screen, tea.Cmd) {
+	// Help-open режим: ?/Esc закрывают оверлей, q/Ctrl+C выходят, остальные
+	// клавиши не действуют, пока открыт help (нет магии под оверлеем).
+	if a.ShowHelp {
+		switch {
+		case runeOf(msg) == '?', msg.Type == tea.KeyEsc:
+			a.ShowHelp = false
+			return a, nil
+		case runeOf(msg) == 'q', msg.Type == tea.KeyCtrlC:
+			return a, tea.Quit
+		}
+		return a, nil
+	}
+
 	// Печатные клавиши — через runeOf: bubbletea кодирует их как KeyRunes (§18.4).
 	switch runeOf(msg) {
 	case 'i':
@@ -163,11 +190,15 @@ func (a *AdaptersScreen) handleKey(msg tea.KeyMsg) (ui.Screen, tea.Cmd) {
 	case 'r':
 		a.Loading = true
 		a.LoadError = nil
+		a.Failed = nil
 		// §16.4: Success → Loading на refresh (скелет вместо устаревших данных).
 		a.StateMachine.SetState(ui.StateLoading)
 		return a, a.LoadData()
+	case 'q':
+		// Статбар обещает "[q] quit" — q обязан выходить (§18.4, INV-UI-009).
+		return a, tea.Quit
 	case '?':
-		// Show help overlay
+		a.ShowHelp = true
 		return a, nil
 	}
 
@@ -209,6 +240,7 @@ func (a *AdaptersScreen) handleDataLoaded(msg AdaptersDataLoaded) {
 	a.Available = msg.Available
 	a.Loading = false
 	a.LoadError = nil
+	a.Failed = nil // свежая загрузка стирает прошлые сбои установки (§16.4)
 	
 	// Нет зарегистрированных адаптеров → empty-with-CTA (§2.8, INV-PROMPT-MVP-006).
 	if len(msg.Adapters) == 0 {
@@ -219,35 +251,127 @@ func (a *AdaptersScreen) handleDataLoaded(msg AdaptersDataLoaded) {
 	a.StateMachine.SetState(ui.StateSuccess)
 }
 
-// installAdapter installs an adapter
-func (a *AdaptersScreen) installAdapter(id string) tea.Cmd {
-	return func() tea.Msg {
-		// Simulate installation
-		time.Sleep(1 * time.Second)
-		
-		// Check if installation succeeded
-		if a.isAdapterInstalled(id) {
-			return InstallSuccess{AdapterID: id}
-		} else {
-			return InstallError{AdapterID: id, Err: fmt.Errorf("failed to install %s", id)}
+// handleInstallSuccess — установка встала: адаптер уходит в Installed и уходит
+// из Failed/Available. Частичный сбой остался → Partial, иначе Success (§16.3).
+func (a *AdaptersScreen) handleInstallSuccess(msg InstallSuccess) {
+	a.InstallError = nil
+	a.moveToInstalled(msg.AdapterID)
+	a.clearFailed(msg.AdapterID)
+	if len(a.Failed) > 0 {
+		a.StateMachine.SetState(ui.StatePartial)
+		return
+	}
+	if len(a.Adapters) == 0 {
+		a.StateMachine.SetState(ui.StateEmpty)
+		return
+	}
+	a.StateMachine.SetState(ui.StateSuccess)
+}
+
+// handleInstallError — установка не встала: сбой виден сразу (PartialBanner
+// с retry), а не теряется молча (INV-UI-010, INV-PROMPT-MVP-006).
+func (a *AdaptersScreen) handleInstallError(msg InstallError) {
+	a.InstallError = msg.Err
+	a.addFailed(msg.AdapterID)
+	a.StateMachine.SetState(ui.StatePartial)
+}
+
+// handleAutoDetectComplete — детекция нашла агентов → Success; никого →
+// Empty-with-CTA (§2.8). Уже навешенные сбои установки сохраняются → Partial.
+func (a *AdaptersScreen) handleAutoDetectComplete(msg AutoDetectComplete) {
+	a.DetectError = nil
+	a.Installed = append([]string(nil), msg.Detected...)
+
+	// Всё, что не найдено, остаётся доступным для установки.
+	detected := make(map[string]bool, len(msg.Detected))
+	for _, id := range msg.Detected {
+		detected[id] = true
+	}
+	a.Available = a.Available[:0]
+	for _, adapter := range a.Adapters {
+		if !detected[adapter.ID()] {
+			a.Available = append(a.Available, adapter.ID())
 		}
+	}
+
+	if len(msg.Detected) == 0 {
+		a.StateMachine.SetState(ui.StateEmpty)
+		return
+	}
+	if len(a.Failed) > 0 {
+		a.StateMachine.SetState(ui.StatePartial)
+		return
+	}
+	a.StateMachine.SetState(ui.StateSuccess)
+}
+
+// moveToInstalled переносит id из Available в Installed (дедупликация).
+func (a *AdaptersScreen) moveToInstalled(id string) {
+	if !containsString(a.Installed, id) {
+		a.Installed = append(a.Installed, id)
+	}
+	kept := a.Available[:0]
+	for _, existing := range a.Available {
+		if existing != id {
+			kept = append(kept, existing)
+		}
+	}
+	a.Available = kept
+}
+
+// addFailed / clearFailed — ведут список сбоев установки для PartialBanner.
+func (a *AdaptersScreen) addFailed(id string) {
+	if !containsString(a.Failed, id) {
+		a.Failed = append(a.Failed, id)
 	}
 }
 
-// autoDetect runs auto-detection
+func (a *AdaptersScreen) clearFailed(id string) {
+	kept := a.Failed[:0]
+	for _, existing := range a.Failed {
+		if existing != id {
+			kept = append(kept, existing)
+		}
+	}
+	a.Failed = kept
+}
+
+func containsString(list []string, id string) bool {
+	for _, existing := range list {
+		if existing == id {
+			return true
+		}
+	}
+	return false
+}
+
+// installAdapter ставит адаптер через его реальный Install() (ADR-009 контракт).
+// Раньше здесь была симуляция, которая всегда «падала»: config-файл никогда не
+// создавался, а результат терялся в Update — [i]/[c] были мёртвой клавишей
+// (INV-UI-009, INV-UI-010). I/O выполняется в tea.Cmd, не в View() (§6).
+func (a *AdaptersScreen) installAdapter(id string) tea.Cmd {
+	return func() tea.Msg {
+		adapter, ok := caf.GetAdapter(id)
+		if !ok {
+			return InstallError{AdapterID: id, Err: fmt.Errorf("unknown adapter %q", id)}
+		}
+		if err := adapter.Install(); err != nil {
+			return InstallError{AdapterID: id, Err: err}
+		}
+		return InstallSuccess{AdapterID: id}
+	}
+}
+
+// autoDetect опрашивает реальные Detect() адаптеров (бинар в $PATH, ADR-009).
+// Результат приходит как AutoDetectComplete и обновляет Installed/Available.
 func (a *AdaptersScreen) autoDetect() tea.Cmd {
 	return func() tea.Msg {
-		// Simulate detection
-		time.Sleep(2 * time.Second)
-		
 		var detected []string
 		for _, adapter := range a.Adapters {
-			// Simulate detection success for some adapters
-			if adapter.ID() == "opencode" || adapter.ID() == "claude-code" {
+			if adapter.Detect() {
 				detected = append(detected, adapter.ID())
 			}
 		}
-		
 		return AutoDetectComplete{Detected: detected}
 	}
 }
@@ -272,6 +396,13 @@ type AutoDetectComplete struct {
 func (a *AdaptersScreen) View() string {
 	// Update status bar
 	a.StatusBar.SetRefreshCompleted()
+	
+	// Help overlay (§18.4): ? на каждом экране показывает все клавиши.
+	// Header и StatusBar — «священные» (§15.2), оверлей заменяет только контент.
+	if a.ShowHelp {
+		overlay := components.NewHelpOverlay("adapters", a.helpSections(), a.Theme)
+		return components.Header(a.Version, "adapters") + "\n" + overlay.View() + "\n" + a.StatusBar.Render()
+	}
 	
 	// Render based on current state
 	switch a.StateMachine.Current() {
@@ -320,7 +451,15 @@ func (a *AdaptersScreen) renderEmpty() string {
 
 // renderPartial renders the partial state
 func (a *AdaptersScreen) renderPartial() string {
-	partialBanner := components.NewPartialBanner(1, 2, []string{"universal-lsp"}, a.Theme)
+	// Баннер собирается из реальных сбоев Failed, а не из хардкода (§16.3):
+	// пользователь видит, ЧТО именно не встало, и может повторить [r]/[i]/[c].
+	missing := append([]string(nil), a.Failed...)
+	sort.Strings(missing) // детерминированный порядок при итерации по срезу
+	total := len(a.Adapters)
+	if total < len(missing) {
+		total = len(missing)
+	}
+	partialBanner := components.NewPartialBanner(total-len(missing), total, missing, a.Theme)
 	return components.Header(a.Version, "adapters") + "\n" + partialBanner.View() + "\n" + a.tableBody() + "\n" + a.StatusBar.Render()
 }
 
@@ -427,6 +566,28 @@ func (a *AdaptersScreen) getHealthStatus(adapter *caf.Adapter) string {
 		return "⚠ degraded (hooks not wired)"
 	}
 	return "✓ healthy"
+}
+
+// helpSections — все живые клавиши менеджера адаптеров для help-оверлея (§18.4).
+// Перечисляются только реально обрабатываемые клавиши — help не врёт (INV-UI-009).
+func (a *AdaptersScreen) helpSections() []components.HelpSection {
+	return []components.HelpSection{
+		{Title: "Navigation", Entries: []components.HelpEntry{
+			{Key: "↑/↓", Desc: "select adapter"},
+			{Key: "Enter", Desc: "open adapter detail"},
+			{Key: "Esc", Desc: "close detail / quit"},
+		}},
+		{Title: "Actions", Entries: []components.HelpEntry{
+			{Key: "r", Desc: "refresh list"},
+			{Key: "q", Desc: "quit"},
+			{Key: "?", Desc: "toggle this help"},
+		}},
+		{Title: "Screen-specific", Entries: []components.HelpEntry{
+			{Key: "i", Desc: "install opencode"},
+			{Key: "c", Desc: "install Claude Code"},
+			{Key: "a", Desc: "auto-detect installed agents"},
+		}},
+	}
 }
 
 // GetID returns the screen ID

@@ -51,6 +51,9 @@ type DashboardScreen struct {
 	// Focus
 	CurrentWidget int
 	WidgetIDs     []string
+
+	// Help overlay (§18.4: ? показывает help на каждом экране)
+	ShowHelp bool
 }
 
 // Widget interface for dashboard widgets
@@ -217,6 +220,19 @@ func (d *DashboardScreen) Update(msg tea.Msg) (ui.Screen, tea.Cmd) {
 
 // handleKey handles keyboard input
 func (d *DashboardScreen) handleKey(msg tea.KeyMsg) (ui.Screen, tea.Cmd) {
+	// Help-open режим: ?/Esc закрывают оверлей, q/Ctrl+C выходят, остальные
+	// клавиши не действуют, пока открыт help (нет магии под оверлеем).
+	if d.ShowHelp {
+		switch {
+		case runeOf(msg) == '?', msg.Type == tea.KeyEsc:
+			d.ShowHelp = false
+			return d, nil
+		case runeOf(msg) == 'q', msg.Type == tea.KeyCtrlC:
+			return d, tea.Quit
+		}
+		return d, nil
+	}
+
 	// Печатные клавиши — через runeOf: bubbletea кодирует их как KeyRunes (§18.4).
 	switch runeOf(msg) {
 	case 'r':
@@ -225,8 +241,11 @@ func (d *DashboardScreen) handleKey(msg tea.KeyMsg) (ui.Screen, tea.Cmd) {
 		// §16.4: Success → Loading на refresh (скелет вместо устаревших данных).
 		d.StateMachine.SetState(ui.StateLoading)
 		return d, d.LoadData()
+	case 'q':
+		// Статбар обещает "[q] quit" — q обязан выходить (§18.4, INV-UI-009).
+		return d, tea.Quit
 	case '?':
-		// Show help overlay
+		d.ShowHelp = true
 		return d, nil
 	}
 
@@ -352,6 +371,13 @@ func (d *DashboardScreen) View() string {
 	// Update status bar
 	d.StatusBar.SetRefreshCompleted()
 	
+	// Help overlay (§18.4): ? на каждом экране показывает все клавиши.
+	// Header и StatusBar — «священные» (§15.2), оверлей заменяет только контент.
+	if d.ShowHelp {
+		overlay := components.NewHelpOverlay("dashboard", d.helpSections(), d.Theme)
+		return components.Header(d.Version, "dashboard") + "\n" + overlay.View() + "\n" + d.StatusBar.Render()
+	}
+	
 	// Render based on current state
 	switch d.StateMachine.Current() {
 	case ui.StateLoading:
@@ -402,7 +428,15 @@ func (d *DashboardScreen) renderError() string {
 
 // renderEmpty renders the empty state
 func (d *DashboardScreen) renderEmpty() string {
-	emptyCTA := components.NewEmptyCTA("No sessions found", "Run `caf init` to get started", "Initialize workspace", "Press [i] to initialize now", d.Theme)
+	// Подсказка обязана называть живую клавишу: [i] на дашборде не обрабатывается,
+	// честный путь — запустить caf init и освежить [r] (INV-UI-009, §18.4).
+	emptyCTA := components.NewEmptyCTA(
+		"No sessions found",
+		"caf hasn't been invoked in this repo yet",
+		"Run `caf init` to start tracking",
+		"Run `caf init` in your terminal, then press [r] to refresh",
+		d.Theme,
+	)
 	return components.Header(d.Version, "dashboard") + "\n" + emptyCTA.View() + "\n" + d.StatusBar.Render()
 }
 
@@ -587,6 +621,25 @@ func (d *DashboardScreen) renderCrossRepoWidget(w *CrossRepoWidget, width, heigh
 	}
 	
 	return strings.Join(lines, "\n")
+}
+
+// helpSections — все живые клавиши дашборда для help-оверлея (§18.4).
+// Перечисляются только реально обрабатываемые клавиши — help не врёт (INV-UI-009).
+// Screen-specific-категории нет: у дашборда нет собственных клавиш вне карты
+// действий — выдумывать bindings ради симметрии нельзя (§18.5).
+func (d *DashboardScreen) helpSections() []components.HelpSection {
+	return []components.HelpSection{
+		{Title: "Navigation", Entries: []components.HelpEntry{
+			{Key: "Tab", Desc: "next widget"},
+			{Key: "Shift+Tab", Desc: "previous widget"},
+			{Key: "Esc", Desc: "quit (root screen)"},
+		}},
+		{Title: "Actions", Entries: []components.HelpEntry{
+			{Key: "r", Desc: "refresh data"},
+			{Key: "q", Desc: "quit"},
+			{Key: "?", Desc: "toggle this help"},
+		}},
+	}
 }
 
 // GetID returns the screen ID

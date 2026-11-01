@@ -248,10 +248,79 @@ func TestOnboardingKeys(t *testing.T) {
 		}
 	})
 
-	t.Run("? returns help command", func(t *testing.T) {
+	t.Run("? opens help overlay with all keybindings (§18.4)", func(t *testing.T) {
 		o := newOnboardingFixture(t, 1)
 		if cmd := keyRune(o, '?'); cmd != nil {
-			t.Error("? currently stubs help overlay with nil cmd (§18.4 overlay — step 16)")
+			t.Error("help is an in-screen overlay — ? must not spawn a command")
+		}
+		if !o.ShowHelp {
+			t.Fatal("? must open the help overlay")
+		}
+		view := o.View()
+		for _, want := range []string{"? Help — onboarding", "Navigation:", "Actions:", "Screen-specific:", "[?] or [Esc] close"} {
+			if !strings.Contains(view, want) {
+				t.Errorf("help overlay missing %q (INV-UI-010)", want)
+			}
+		}
+		// Живые клавиши экрана обязаны быть в help — help не врёт (INV-UI-009).
+		for _, key := range []string{"Enter", "r", "q", "i", "c"} {
+			if !strings.Contains(view, key) {
+				t.Errorf("help overlay missing keybinding %q", key)
+			}
+		}
+
+		// ?/Esc закрывают оверлей
+		_, _ = o.Update(tea.KeyMsg{Type: tea.KeyEsc})
+		if o.ShowHelp {
+			t.Error("Esc must close the help overlay (no dead-end, INV-UI-010)")
+		}
+	})
+
+	t.Run("r retries current step from error state (ErrorBox CTA)", func(t *testing.T) {
+		o := newOnboardingFixture(t, 2)
+		o.DetectionError = errors.New("detection command failed")
+		o.StateMachine.SetState(ui.StateError)
+
+		cmd := keyRune(o, 'r')
+		if cmd == nil {
+			t.Fatal("r must return the step retry command (ErrorBox promises [r] retry)")
+		}
+		if got := o.StateMachine.Current(); got != ui.StateLoading {
+			t.Errorf("state after r = %v, want loading (Error → Loading on retry, §16.4)", got)
+		}
+	})
+
+	t.Run("[i]/[c] on detection step install chosen agent", func(t *testing.T) {
+		o := newOnboardingFixture(t, 2)
+		cmd := keyRune(o, 'i')
+		if cmd == nil {
+			t.Fatal("i must return the install command (empty-CTA advertises [i])")
+		}
+		if len(o.DetectedAdapters) != 1 || o.DetectedAdapters[0] != "opencode" {
+			t.Errorf("DetectedAdapters = %v, want [opencode]", o.DetectedAdapters)
+		}
+		if o.CurrentStep != 3 {
+			t.Errorf("CurrentStep = %d, want 3 (installation)", o.CurrentStep)
+		}
+
+		o2 := newOnboardingFixture(t, 2)
+		o2.StateMachine.SetState(ui.StateEmpty)
+		_, _ = o2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+		if len(o2.DetectedAdapters) != 1 || o2.DetectedAdapters[0] != "claude-code" {
+			t.Errorf("empty-state c: DetectedAdapters = %v, want [claude-code]", o2.DetectedAdapters)
+		}
+		if o2.CurrentStep != 3 {
+			t.Errorf("empty-state c: CurrentStep = %d, want 3", o2.CurrentStep)
+		}
+	})
+
+	t.Run("[i] on welcome step does nothing (hint не врёт)", func(t *testing.T) {
+		o := newOnboardingFixture(t, 1)
+		if cmd := keyRune(o, 'i'); cmd != nil {
+			t.Error("i is not hinted on welcome — must be inert there")
+		}
+		if o.CurrentStep != 1 {
+			t.Errorf("CurrentStep = %d, want 1", o.CurrentStep)
 		}
 	})
 }

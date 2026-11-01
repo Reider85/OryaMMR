@@ -61,7 +61,9 @@ func TestAdapters5StateSnapshots(t *testing.T) {
 			a.LoadError = errors.New("cannot read .caf/adapters: corrupted YAML")
 		}},
 		{"adapters_empty", ui.StateEmpty, nil},
-		{"adapters_partial", ui.StatePartial, nil},
+		{"adapters_partial", ui.StatePartial, func(a *AdaptersScreen) {
+			a.Failed = []string{"universal-lsp"}
+		}},
 	}
 
 	for _, tc := range states {
@@ -116,9 +118,10 @@ func TestAdaptersStateContent(t *testing.T) {
 
 	t.Run("partial shows banner over matrix", func(t *testing.T) {
 		a := newAdaptersFixture(t)
+		a.Failed = []string{"universal-lsp"} // реальный сбой → баннер, не хардкод
 		a.StateMachine.SetState(ui.StatePartial)
 		view := a.View()
-		for _, want := range []string{"Partial data: 1 of 2", "Missing: universal-lsp", "capability matrix"} {
+		for _, want := range []string{"Partial data: 2 of 3", "Missing: universal-lsp", "capability matrix"} {
 			if !strings.Contains(view, want) {
 				t.Errorf("partial view missing %q", want)
 			}
@@ -227,6 +230,40 @@ func TestAdaptersKeys(t *testing.T) {
 		}
 	})
 
+	t.Run("? opens help overlay with all keybindings (§18.4)", func(t *testing.T) {
+		a := newAdaptersFixture(t)
+		if cmd := keyRune(a, '?'); cmd != nil {
+			t.Error("help is an in-screen overlay — ? must not spawn a command")
+		}
+		if !a.ShowHelp {
+			t.Fatal("? must open the help overlay")
+		}
+		view := a.View()
+		for _, want := range []string{"? Help — adapters", "Navigation:", "Actions:", "Screen-specific:", "[?] or [Esc] close"} {
+			if !strings.Contains(view, want) {
+				t.Errorf("help overlay missing %q (INV-UI-010)", want)
+			}
+		}
+		// Живые клавиши экрана обязаны быть в help — help не врёт (INV-UI-009).
+		for _, key := range []string{"Enter", "r", "q", "i", "c", "a"} {
+			if !strings.Contains(view, key) {
+				t.Errorf("help overlay missing keybinding %q", key)
+			}
+		}
+
+		_, _ = a.Update(tea.KeyMsg{Type: tea.KeyEsc})
+		if a.ShowHelp {
+			t.Error("Esc must close the help overlay (no dead-end, INV-UI-010)")
+		}
+	})
+
+	t.Run("q quits (statusbar promises [q] quit, §18.4)", func(t *testing.T) {
+		a := newAdaptersFixture(t)
+		if _, ok := keyRune(a, 'q')().(tea.QuitMsg); !ok {
+			t.Error("q must produce tea.QuitMsg")
+		}
+	})
+
 	t.Run("Esc on list quits", func(t *testing.T) {
 		a := newAdaptersFixture(t)
 		_, cmd := a.Update(tea.KeyMsg{Type: tea.KeyEsc})
@@ -235,6 +272,90 @@ func TestAdaptersKeys(t *testing.T) {
 		}
 		if _, ok := cmd().(tea.QuitMsg); !ok {
 			t.Error("Esc must produce tea.QuitMsg")
+		}
+	})
+}
+
+// TestAdaptersInstallDetectMsgs — InstallSuccess/InstallError/AutoDetectComplete
+// теперь реально обрабатываются: раньше они терялись в Update, [i]/[c]/[a] были
+// мёртвыми клавишами без обратной связи (INV-UI-009, INV-UI-010, §16.3).
+func TestAdaptersInstallDetectMsgs(t *testing.T) {
+	t.Run("InstallSuccess moves adapter to Installed and returns Success", func(t *testing.T) {
+		a := newAdaptersFixture(t) // opencode уже в Installed, claude-code/universal-lsp в Available
+		_, _ = a.Update(InstallSuccess{AdapterID: "claude-code"})
+
+		if got := a.StateMachine.Current(); got != ui.StateSuccess {
+			t.Fatalf("state = %v, want success", got)
+		}
+		if !containsString(a.Installed, "claude-code") {
+			t.Errorf("Installed = %v, want claude-code present", a.Installed)
+		}
+		if containsString(a.Available, "claude-code") {
+			t.Errorf("Available = %v, claude-code must be removed", a.Available)
+		}
+	})
+
+	t.Run("InstallError surfaces Partial banner with the failed adapter", func(t *testing.T) {
+		a := newAdaptersFixture(t)
+		_, _ = a.Update(InstallError{AdapterID: "claude-code", Err: errors.New("settings.json unreadable")})
+
+		if got := a.StateMachine.Current(); got != ui.StatePartial {
+			t.Fatalf("state = %v, want partial (install failure must be visible, INV-UI-010)", got)
+		}
+		if !containsString(a.Failed, "claude-code") {
+			t.Errorf("Failed = %v, want claude-code", a.Failed)
+		}
+		view := a.View()
+		for _, want := range []string{"Partial data", "Missing: claude-code", "[r] retry", "capability matrix"} {
+			if !strings.Contains(view, want) {
+				t.Errorf("partial view missing %q", want)
+			}
+		}
+	})
+
+	t.Run("retrying failed install clears Partial back to Success", func(t *testing.T) {
+		a := newAdaptersFixture(t)
+		_, _ = a.Update(InstallError{AdapterID: "universal-lsp", Err: errors.New("boom")})
+		if got := a.StateMachine.Current(); got != ui.StatePartial {
+			t.Fatalf("state after error = %v, want partial", got)
+		}
+
+		_, _ = a.Update(InstallSuccess{AdapterID: "universal-lsp"})
+		if got := a.StateMachine.Current(); got != ui.StateSuccess {
+			t.Errorf("state after retry success = %v, want success", got)
+		}
+		if len(a.Failed) != 0 {
+			t.Errorf("Failed = %v, want empty after successful retry", a.Failed)
+		}
+	})
+
+	t.Run("AutoDetectComplete with agents transitions to Success", func(t *testing.T) {
+		a := newAdaptersFixture(t)
+		_, _ = a.Update(AutoDetectComplete{Detected: []string{"opencode"}})
+
+		if got := a.StateMachine.Current(); got != ui.StateSuccess {
+			t.Fatalf("state = %v, want success", got)
+		}
+		if len(a.Installed) != 1 || a.Installed[0] != "opencode" {
+			t.Errorf("Installed = %v, want [opencode]", a.Installed)
+		}
+		if !containsString(a.Available, "claude-code") || !containsString(a.Available, "universal-lsp") {
+			t.Errorf("Available = %v, want undetected adapters", a.Available)
+		}
+	})
+
+	t.Run("AutoDetectComplete with nothing detected transitions to Empty", func(t *testing.T) {
+		a := newAdaptersFixture(t)
+		_, _ = a.Update(AutoDetectComplete{Detected: nil})
+
+		if got := a.StateMachine.Current(); got != ui.StateEmpty {
+			t.Fatalf("state = %v, want empty (no agents detected, §2.8)", got)
+		}
+		view := a.View()
+		for _, want := range []string{"No adapters", "[i]"} {
+			if !strings.Contains(view, want) {
+				t.Errorf("empty view missing %q", want)
+			}
 		}
 	})
 }
