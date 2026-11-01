@@ -152,6 +152,25 @@ func (a *AdaptersScreen) Update(msg tea.Msg) (ui.Screen, tea.Cmd) {
 
 // handleKey handles keyboard input
 func (a *AdaptersScreen) handleKey(msg tea.KeyMsg) (ui.Screen, tea.Cmd) {
+	// Печатные клавиши — через runeOf: bubbletea кодирует их как KeyRunes (§18.4).
+	switch runeOf(msg) {
+	case 'i':
+		return a, a.installAdapter("opencode")
+	case 'c':
+		return a, a.installAdapter("claude-code")
+	case 'a':
+		return a, a.autoDetect()
+	case 'r':
+		a.Loading = true
+		a.LoadError = nil
+		// §16.4: Success → Loading на refresh (скелет вместо устаревших данных).
+		a.StateMachine.SetState(ui.StateLoading)
+		return a, a.LoadData()
+	case '?':
+		// Show help overlay
+		return a, nil
+	}
+
 	switch msg.Type {
 	case tea.KeyUp:
 		if a.SelectedAdapter > 0 {
@@ -162,9 +181,12 @@ func (a *AdaptersScreen) handleKey(msg tea.KeyMsg) (ui.Screen, tea.Cmd) {
 			a.SelectedAdapter++
 		}
 	case tea.KeyEnter:
-		a.ShowDetail = true
-		a.DetailAdapter = &a.Adapters[a.SelectedAdapter]
-		a.StatusBar.SetFocus("detail")
+		// Guard: Enter при пустом списке не должен паниковать (скелет/empty state).
+		if a.SelectedAdapter >= 0 && a.SelectedAdapter < len(a.Adapters) {
+			a.ShowDetail = true
+			a.DetailAdapter = &a.Adapters[a.SelectedAdapter]
+			a.StatusBar.SetFocus("detail")
+		}
 	case tea.KeyEsc:
 		if a.ShowDetail {
 			a.ShowDetail = false
@@ -173,19 +195,6 @@ func (a *AdaptersScreen) handleKey(msg tea.KeyMsg) (ui.Screen, tea.Cmd) {
 		} else {
 			return a, tea.Quit
 		}
-	case 'i':
-		return a, a.installAdapter("opencode")
-	case 'c':
-		return a, a.installAdapter("claude-code")
-	case 'a':
-		return a, a.autoDetect()
-	case 'r':
-		a.Loading = true
-		a.LoadError = nil
-		return a, a.LoadData()
-	case '?':
-		// Show help overlay
-		return a, nil
 	case tea.KeyCtrlC:
 		return a, tea.Quit
 	}
@@ -201,6 +210,11 @@ func (a *AdaptersScreen) handleDataLoaded(msg AdaptersDataLoaded) {
 	a.Loading = false
 	a.LoadError = nil
 	
+	// Нет зарегистрированных адаптеров → empty-with-CTA (§2.8, INV-PROMPT-MVP-006).
+	if len(msg.Adapters) == 0 {
+		a.StateMachine.SetState(ui.StateEmpty)
+		return
+	}
 	// Transition to success state
 	a.StateMachine.SetState(ui.StateSuccess)
 }
@@ -307,11 +321,17 @@ func (a *AdaptersScreen) renderEmpty() string {
 // renderPartial renders the partial state
 func (a *AdaptersScreen) renderPartial() string {
 	partialBanner := components.NewPartialBanner(1, 2, []string{"universal-lsp"}, a.Theme)
-	return components.Header(a.Version, "adapters") + "\n" + partialBanner.View() + "\n" + a.renderSuccess() + "\n" + a.StatusBar.Render()
+	return components.Header(a.Version, "adapters") + "\n" + partialBanner.View() + "\n" + a.tableBody() + "\n" + a.StatusBar.Render()
 }
 
 // renderSuccess renders the success state with actual data
 func (a *AdaptersScreen) renderSuccess() string {
+	return components.Header(a.Version, "adapters") + "\n" + a.tableBody() + "\n" + a.StatusBar.Render()
+}
+
+// tableBody — таблица capability matrix без header/statusbar
+// (используется и в renderPartial, чтобы не дублировать «священную» обвязку §15.2).
+func (a *AdaptersScreen) tableBody() string {
 	
 	// Render table header
 	header := "Adapters — capability matrix\n"

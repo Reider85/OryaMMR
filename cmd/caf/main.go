@@ -259,7 +259,28 @@ Example:
 	},
 }
 
+// commandsRegistered — защита от повторной регистрации (main() и тесты).
+var commandsRegistered bool
+
 func main() {
+	setupCommands()
+
+	if err := rootCmd.Execute(); err != nil {
+		// Ошибки использования/RunE — ненулевой exit; hook-команда сюда не попадает (см. Run).
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+// setupCommands регистрирует подкоманды и флаги. Выделено из main() ради
+// покрытия (§10): тесты вызывают setupCommands() + rootCmd.SetArgs/Execute
+// напрямую, не запуская os.Exit.
+func setupCommands() {
+	if commandsRegistered {
+		return
+	}
+	commandsRegistered = true
+
 	// Один вызов регистрирует все встроенные адаптеры (Tier 1 + Tier 4).
 	adapters.Initialize()
 
@@ -292,12 +313,6 @@ func main() {
 	_ = whenCmd.MarkFlagRequired("pattern")
 
 	contextCmd.Flags().Bool("refresh", false, "Regenerate context.md from sessions")
-
-	if err := rootCmd.Execute(); err != nil {
-		// Ошибки использования/RunE — ненулевой exit; hook-команда сюда не попадает (см. Run).
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
 }
 
 // --- helpers: флаги и пути ---
@@ -750,10 +765,7 @@ func runDashboardTUI(repoRoot string) error {
 	// Create dashboard model
 	model := NewDashboardModel(repoRoot, "0.4.1-mvp.1-dev")
 	
-	// Start the tea program
-	program := tea.NewProgram(model, tea.WithAltScreen())
-	
-	if _, err := program.Run(); err != nil {
+	if _, err := runTUI(model, tea.WithAltScreen()); err != nil {
 		return fmt.Errorf("failed to run TUI: %w", err)
 	}
 	

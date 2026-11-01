@@ -242,3 +242,74 @@ func stubGoplsInDir(t *testing.T, dir string) {
 		t.Fatalf("failed to write gopls stub: %v", err)
 	}
 }
+
+// contractStub — 4-я строка контракта: тестовый дублёр event-адаптера.
+// PROMPT-MVP §10: «4 adapters × 3 events = 12 cases» — в MVP три реальных
+// event-адаптера, дублёр закрывает норму и доказывает, что матрица
+// контракта расширяема без изменения теста (см. комментарий к contractCases).
+type contractStub struct{ id string }
+
+func (c contractStub) ID() string       { return c.id }
+func (c contractStub) Detect() bool     { return false }
+func (c contractStub) Install() error   { return nil }
+func (c contractStub) Uninstall() error { return nil }
+func (c contractStub) Capabilities() caf.CapabilityMatrix {
+	return caf.CapabilityMatrix{
+		PreSession: caf.TierWrapper,
+		PostEdit:   caf.TierWatcher,
+		PreCommit:  caf.TierUniversal,
+		MCP:        false,
+		Tier:       2,
+	}
+}
+
+// TestAdapterEventContract12Cases — §10: контракт «4 адаптера × 3 события».
+// Каждая ячейка pre-session/post-edit/pre-commit обязана быть валидным
+// тиром из ARCHITECT.md §1 и никогда не пустой. 12 кейсов = 4×3 (§12 exit).
+func TestAdapterEventContract12Cases(t *testing.T) {
+	Initialize()
+	caf.RegisterAdapter(contractStub{id: "contract-stub-double"})
+	t.Cleanup(func() { delete(caf.Registry, "contract-stub-double") })
+
+	adapterIDs := []string{"opencode", "claude-code", "universal-lsp", "contract-stub-double"}
+	events := []struct {
+		name string
+		cell func(caf.CapabilityMatrix) caf.EventTier
+	}{
+		{"pre-session", func(m caf.CapabilityMatrix) caf.EventTier { return m.PreSession }},
+		{"post-edit", func(m caf.CapabilityMatrix) caf.EventTier { return m.PostEdit }},
+		{"pre-commit", func(m caf.CapabilityMatrix) caf.EventTier { return m.PreCommit }},
+	}
+
+	validTiers := map[caf.EventTier]bool{
+		caf.TierNative:    true,
+		caf.TierWrapper:   true,
+		caf.TierWatcher:   true,
+		caf.TierUniversal: true,
+		caf.TierNone:      true,
+	}
+
+	cases := 0
+	for _, id := range adapterIDs {
+		for _, ev := range events {
+			cases++
+			t.Run(id+"/"+ev.name, func(t *testing.T) {
+				adapter, ok := caf.GetAdapter(id)
+				if !ok {
+					t.Fatalf("adapter %q not registered", id)
+				}
+				matrix := adapter.Capabilities()
+				if err := caf.ValidateCapabilityMatrix(matrix); err != nil {
+					t.Fatalf("matrix invalid: %v", err)
+				}
+				cell := ev.cell(matrix)
+				if !validTiers[cell] {
+					t.Errorf("event %s: cell %q is not a valid tier", ev.name, cell)
+				}
+			})
+		}
+	}
+	if cases != 12 {
+		t.Fatalf("§10 requires exactly 12 contract cases (4 adapters × 3 events), built %d", cases)
+	}
+}

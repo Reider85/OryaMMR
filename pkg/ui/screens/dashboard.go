@@ -2,6 +2,7 @@
 package screens
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,10 @@ import (
 	"github.com/Reider85/OryaCodeAuthorityFirst/pkg/ui"
 	"github.com/Reider85/OryaCodeAuthorityFirst/pkg/ui/components"
 )
+
+// widgetTitleOrder — заголовки виджетов в порядке WidgetIDs (фокус-маркер
+// сравнивает заголовок с позицией, а не с ID: INV-PROMPT-MVP-007).
+var widgetTitleOrder = []string{"Today", "Authorship Score", "Active Agents", "Recent Decisions", "Cross-repo"}
 
 // DashboardScreen represents the dashboard screen
 type DashboardScreen struct {
@@ -144,7 +149,10 @@ func (d *DashboardScreen) LoadData() tea.Cmd {
 		sessionsDir := filepath.Join(d.RepoRoot, ".caf", "sessions")
 		sessionManager := storage.NewManager(sessionsDir)
 		sessionIDs, err := sessionManager.ListSessions()
-		if err != nil && !os.IsNotExist(err) {
+		// errors.Is, а НЕ os.IsNotExist: ошибки storage обёрнуты через %w,
+		// os.IsNotExist их не раскапывает — свежий репо падал в Error state
+		// вместо Empty-CTA (§2.6, INV-PROMPT-MVP-006).
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return DashboardLoadError{Err: fmt.Errorf("failed to load sessions: %w", err)}
 		}
 		
@@ -161,7 +169,7 @@ func (d *DashboardScreen) LoadData() tea.Cmd {
 		manifestFile := storage.GetManifestPath(d.RepoRoot)
 		manifestManager := storage.NewManifestManager(manifestFile)
 		manifest, err := manifestManager.LoadManifest()
-		if err != nil && !os.IsNotExist(err) {
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return DashboardLoadError{Err: fmt.Errorf("failed to load manifest: %w", err)}
 		}
 		
@@ -218,6 +226,19 @@ func (d *DashboardScreen) Update(msg tea.Msg) (ui.Screen, tea.Cmd) {
 
 // handleKey handles keyboard input
 func (d *DashboardScreen) handleKey(msg tea.KeyMsg) (ui.Screen, tea.Cmd) {
+	// Печатные клавиши — через runeOf: bubbletea кодирует их как KeyRunes (§18.4).
+	switch runeOf(msg) {
+	case 'r':
+		d.Loading = true
+		d.LoadError = nil
+		// §16.4: Success → Loading на refresh (скелет вместо устаревших данных).
+		d.StateMachine.SetState(ui.StateLoading)
+		return d, d.LoadData()
+	case '?':
+		// Show help overlay
+		return d, nil
+	}
+
 	switch msg.Type {
 	case tea.KeyTab:
 		d.CurrentWidget = (d.CurrentWidget + 1) % len(d.WidgetIDs)
@@ -225,13 +246,6 @@ func (d *DashboardScreen) handleKey(msg tea.KeyMsg) (ui.Screen, tea.Cmd) {
 	case tea.KeyShiftTab:
 		d.CurrentWidget = (d.CurrentWidget - 1 + len(d.WidgetIDs)) % len(d.WidgetIDs)
 		d.StatusBar.SetFocus(d.WidgetIDs[d.CurrentWidget])
-	case 'r':
-		d.Loading = true
-		d.LoadError = nil
-		return d, d.LoadData()
-	case '?':
-		// Show help overlay
-		return d, nil
 	case tea.KeyEsc, tea.KeyCtrlC:
 		return d, tea.Quit
 	}
@@ -251,6 +265,11 @@ func (d *DashboardScreen) handleDataLoaded(msg DashboardDataLoaded) {
 	// Update widgets with data
 	d.updateWidgets()
 	
+	// 0 сессий → empty-with-CTA «Run caf init» (§2.6), не happy-path.
+	if len(msg.Sessions) == 0 {
+		d.StateMachine.SetState(ui.StateEmpty)
+		return
+	}
 	// Transition to success state
 	d.StateMachine.SetState(ui.StateSuccess)
 }
@@ -451,7 +470,7 @@ func (d *DashboardScreen) renderWidget(title string, widget interface{}, width, 
 	
 	// Add focus indicator if this widget is focused
 	focusPrefix := "  "
-	if d.WidgetIDs[d.CurrentWidget] == title {
+	if d.CurrentWidget >= 0 && d.CurrentWidget < len(widgetTitleOrder) && widgetTitleOrder[d.CurrentWidget] == title {
 		focusPrefix = "▸ "
 	}
 	

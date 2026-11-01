@@ -12,6 +12,13 @@ import (
 	"github.com/Reider85/OryaCodeAuthorityFirst/pkg/ui/screens"
 )
 
+// runTUI — единственная точка запуска интерактивной сессии bubbletea.
+// Выделена в переменную ради тестов (§10): тесты перехватывают запуск
+// вместо вечного event loop, поведение прод-кода не меняется.
+var runTUI = func(model tea.Model, opts ...tea.ProgramOption) (tea.Model, error) {
+	return tea.NewProgram(model, opts...).Run()
+}
+
 // DashboardModel is a direct model for the dashboard screen
 type DashboardModel struct {
 	RepoRoot     string
@@ -86,8 +93,7 @@ func (m *DashboardModel) View() string {
 func runDashboardDirect(repoRoot string) error {
 	version := "0.4.1" // TODO: get from build info
 	model := NewDashboardModel(repoRoot, version)
-	program := tea.NewProgram(model)
-	if _, err := program.Run(); err != nil {
+	if _, err := runTUI(model); err != nil {
 		return fmt.Errorf("dashboard failed: %w", err)
 	}
 	return nil
@@ -161,8 +167,7 @@ func (m *AdaptersModel) View() string {
 func runAdaptersTUI(repoRoot string) error {
 	version := "0.4.1" // TODO: get from build info
 	model := NewAdaptersModel(repoRoot, version)
-	program := tea.NewProgram(model)
-	if _, err := program.Run(); err != nil {
+	if _, err := runTUI(model, tea.WithAltScreen()); err != nil {
 		return fmt.Errorf("adapters TUI failed: %w", err)
 	}
 	return nil
@@ -243,8 +248,7 @@ func runInitTUI(repoRoot string) error {
 	
 	// Then launch the onboarding TUI
 	model := NewOnboardingModel(repoRoot, version)
-	program := tea.NewProgram(model)
-	if _, err := program.Run(); err != nil {
+	if _, err := runTUI(model, tea.WithAltScreen()); err != nil {
 		return fmt.Errorf("onboarding TUI failed: %w", err)
 	}
 	return nil

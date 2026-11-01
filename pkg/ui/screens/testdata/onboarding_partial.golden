@@ -1,0 +1,21 @@
+┌──────────────────────────────────────────┐
+│[1;48;5;232mCodeAuthorityFirst 0.4.1-test — [1;38;5;75monboarding[0m[0m│
+└──────────────────────────────────────────┘
+┌────────────────────────────────┐
+│ [38;5;180m⚠ Partial data: 1 of 2 loaded.[0m │
+│ [38;5;180mMissing: universal-lsp[0m         │
+│ [38;5;180m┌───────────┐[0m                  │
+│ [38;5;180m│ [1;38;5;180m[r] retry[0m │[0m                  │
+│ [38;5;180m└───────────┘[0m                  │
+└────────────────────────────────┘
+▸ Step 3/4: Installation
+──────────────────────────────
+Installing detected agents...
+
+Installation results:
+ ✓ opencode installed
+ ✗ universal-lsp failed: installation failed
+
+Press [Enter] to continue, [Esc] back
+
+[2;48;5;232monboarding focus:                                      [Enter] next  [Esc] back  [q] abort  [?] help[0m

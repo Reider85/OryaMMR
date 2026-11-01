@@ -1,531 +1,294 @@
-//go:build integration
-
+// tui_test.go — тесты AppModel: глобальные клавиши, переключение экранов,
+// помощь, refresh, view (§18.4 universal map, §18.5 conflict resolution).
 package ui
 
 import (
+	"io"
+	"os"
+	"strings"
 	"testing"
-	"time"
+
+	"github.com/charmbracelet/bubbletea"
 )
 
-// TestTheme tests the theme functionality
-func TestTheme(t *testing.T) {
-	theme := NewTheme()
-	
-	// Test theme creation
-	if theme == nil {
-		t.Fatal("Theme should not be nil")
+func TestPlaceholderScreenContract(t *testing.T) {
+	p := &PlaceholderScreen{ID: "doctor", Theme: NewTheme()}
+
+	if cmd := p.Init(); cmd != nil {
+		t.Error("placeholder Init must be nil")
 	}
-	
-	// Test color styles
-	if theme.Primary.GetForeground() == "" {
-		t.Error("Primary color should not be empty")
+	screen, cmd := p.Update(nil)
+	if screen != Screen(p) || cmd != nil {
+		t.Errorf("Update must be identity, got (%v, %v)", screen, cmd)
 	}
-	
-	if theme.Secondary.GetForeground() == "" {
-		t.Error("Secondary color should not be empty")
+	view := p.View()
+	if !strings.Contains(view, "doctor") || !strings.Contains(view, "Press ? for help") {
+		t.Errorf("placeholder view missing content: %q", view)
 	}
-	
-	if theme.Error.GetForeground() == "" {
-		t.Error("Error color should not be empty")
+	if p.GetID() != "doctor" {
+		t.Errorf("GetID = %q", p.GetID())
 	}
-	
-	// Test high contrast theme
-	highContrastTheme := theme.HighContrast()
-	if highContrastTheme == nil {
-		t.Fatal("High contrast theme should not be nil")
+	if !p.IsActive() {
+		t.Error("placeholder must be active")
 	}
-	
-	// Test precompute styles
-	theme.PrecomputeStyles()
-	
-	// Test color getter
-	color := theme.GetColor("primary")
-	if color == nil {
-		t.Error("GetColor should return a valid style")
-	}
+	p.SetActive(false) // no-op, без паники
 }
 
-// TestKeys tests the keyboard mapping functionality
-func TestKeys(t *testing.T) {
-	keys := NewKeys()
-	
-	// Test keys creation
-	if keys == nil {
-		t.Fatal("Keys should not be nil")
-	}
-	
-	// Test navigation keys
-	if keys.Tab == "" {
-		t.Error("Tab key should not be empty")
-	}
-	
-	if keys.Enter == "" {
-		t.Error("Enter key should not be empty")
-	}
-	
-	if keys.Esc == "" {
-		t.Error("Esc key should not be empty")
-	}
-	
-	// Test action keys
-	if keys.Refresh == "" {
-		t.Error("Refresh key should not be empty")
-	}
-	
-	if keys.Quit == "" {
-		t.Error("Quit key should not be empty")
-	}
-	
-	// Test global shortcuts
-	if keys.Dashboard == "" {
-		t.Error("Dashboard key should not be empty")
-	}
-	
-	if keys.Doctor == "" {
-		t.Error("Doctor key should not be empty")
-	}
-	
-	// Test key type checking
-	if !keys.IsNavigationKey(keys.Up) {
-		t.Error("Up should be a navigation key")
-	}
-	
-	if keys.IsNavigationKey(keys.Refresh) {
-		t.Error("Refresh should not be a navigation key")
-	}
-	
-	if !keys.IsActionKey(keys.Enter) {
-		t.Error("Enter should be an action key")
-	}
-	
-	if keys.IsActionKey(keys.Up) {
-		t.Error("Up should not be an action key")
-	}
-	
-	if !keys.IsGlobalShortcut(keys.Dashboard) {
-		t.Error("Dashboard should be a global shortcut")
-	}
-	
-	if keys.IsGlobalShortcut(keys.Up) {
-		t.Error("Up should not be a global shortcut")
-	}
-}
-
-// TestPerformanceBudget tests the performance budget functionality
-func TestPerformanceBudget(t *testing.T) {
-	budget := NewPerformanceBudget()
-	
-	// Test budget creation
-	if budget == nil {
-		t.Fatal("Performance budget should not be nil")
-	}
-	
-	// Test budget values
-	if budget.FirstPaint <= 0 {
-		t.Error("First paint budget should be positive")
-	}
-	
-	if budget.FrameRender <= 0 {
-		t.Error("Frame render budget should be positive")
-	}
-	
-	if budget.Keystroke <= 0 {
-		t.Error("Keystroke budget should be positive")
-	}
-}
-
-// TestPerfTracker tests the performance tracker functionality
-func TestPerfTracker(t *testing.T) {
-	budget := NewPerformanceBudget()
-	tracker := NewPerfTracker(budget)
-	
-	// Test tracker creation
-	if tracker == nil {
-		t.Fatal("Performance tracker should not be nil")
-	}
-	
-	// Test timing
-	tracker.Start("test_operation")
-	time.Sleep(10 * time.Millisecond) // Simulate work
-	duration := tracker.End("test_operation")
-	
-	if duration <= 0 {
-		t.Error("Duration should be positive")
-	}
-	
-	// Test budget checking
-	withinBudget, actual, budget := tracker.CheckBudget("test_operation")
-	if withinBudget {
-		t.Log("Operation within budget")
-	} else {
-		t.Logf("Operation exceeded budget: %s > %s", actual, budget)
-	}
-}
-
-// TestStateMachine tests the state machine functionality
-func TestStateMachine(t *testing.T) {
-	sm := NewStateMachine()
-	
-	// Test state machine creation
-	if sm == nil {
-		t.Fatal("State machine should not be nil")
-	}
-	
-	// Test initial state
-	if sm.Current() != StateLoading {
-		t.Error("Initial state should be loading")
-	}
-	
-	// Test state transitions
-	sm.Transition(DataLoadedMsg{Empty: false})
-	if sm.Current() != StateSuccess {
-		t.Error("Should transition to success on data loaded")
-	}
-	
-	sm.Transition(DataErrorMsg{Err: fmt.Errorf("test error")})
-	if sm.Current() != StateError {
-		t.Error("Should transition to error on data error")
-	}
-	
-	sm.Transition(PartialDataMsg{Missing: []string{"file1"}})
-	if sm.Current() != StatePartial {
-		t.Error("Should transition to partial on partial data")
-	}
-	
-	// Test error state
-	if sm.Error() == "" {
-		t.Error("Error state should have an error message")
-	}
-}
-
-// TestAccessibilityConfig tests the accessibility configuration
-func TestAccessibilityConfig(t *testing.T) {
-	config := NewAccessibilityConfig()
-	
-	// Test config creation
-	if config == nil {
-		t.Fatal("Accessibility config should not be nil")
-	}
-	
-	// Test default values
-	if !config.KeyboardOnly {
-		t.Error("Keyboard-only should be enabled by default")
-	}
-	
-	if !config.TabNavigation {
-		t.Error("Tab navigation should be enabled by default")
-	}
-	
-	if !config.EscapeExits {
-		t.Error("Escape exits should be enabled by default")
-	}
-	
-	if !config.ConfirmActions {
-		t.Error("Confirm actions should be enabled by default")
-	}
-}
-
-// TestA11y tests the accessibility functionality
-func TestA11y(t *testing.T) {
-	config := NewAccessibilityConfig()
-	theme := NewTheme()
-	keys := NewKeys()
-	a11y := NewA11y(config, theme, keys)
-	
-	// Test a11y creation
-	if a11y == nil {
-		t.Fatal("Accessibility should not be nil")
-	}
-	
-	// Test theme getter
-	testTheme := a11y.GetTheme()
-	if testTheme == nil {
-		t.Error("GetTheme should return a valid theme")
-	}
-	
-	// Test announcement text
-	announcement := a11y.GetAnnouncementText("test_action", "test_description")
-	if announcement == "" {
-		t.Error("GetAnnouncementText should return text when screen reader is enabled")
-	}
-	
-	// Test animation check
-	shouldAnimate := a11y.ShouldAnimate()
-	if shouldAnimate != config.ReducedMotion {
-		t.Error("ShouldAnimate should respect reduced motion setting")
-	}
-	
-	// Test keyboard shortcuts
-	shortcuts := a11y.GetKeyboardShortcuts()
-	if shortcuts == "" {
-		t.Error("GetKeyboardShortcuts should return help text")
-	}
-	
-	// Test contrast validation (simplified)
-	valid := a11y.ValidateColorContrast("#ffffff", "#000000")
-	if !valid {
-		t.Error("White on black should have good contrast")
-	}
-	
-	// Test validation report
-	report := a11y.GetAccessibilityReport()
-	if report == "" {
-		t.Error("GetAccessibilityReport should return a report")
-	}
-}
-
-// TestFocusManager tests the focus manager functionality
-func TestFocusManager(t *testing.T) {
-	config := NewAccessibilityConfig()
-	theme := NewTheme()
-	keys := NewKeys()
-	a11y := NewA11y(config, theme, keys)
-	focusManager := NewFocusManager(a11y)
-	
-	// Test focus manager creation
-	if focusManager == nil {
-		t.Fatal("Focus manager should not be nil")
-	}
-	
-	// Test adding focusable elements
-	focusManager.AddFocusableElement("element1")
-	focusManager.AddFocusableElement("element2")
-	
-	// Test focus movement
-	element := focusManager.MoveForward()
-	if element != "element1" {
-		t.Error("MoveForward should return the first element")
-	}
-	
-	element = focusManager.MoveForward()
-	if element != "element2" {
-		t.Error("MoveForward should return the second element")
-	}
-	
-	element = focusManager.MoveForward()
-	if element != "element1" {
-		t.Error("MoveForward should cycle back to first element")
-	}
-	
-	// Test focus setting
-	set := focusManager.SetFocus("element2")
-	if !set {
-		t.Error("SetFocus should return true for existing element")
-	}
-	
-	set = focusManager.SetFocus("nonexistent")
-	if set {
-		t.Error("SetFocus should return false for nonexistent element")
-	}
-	
-	// Test focus path
-	path := focusManager.GetFocusPath()
-	if len(path) == 0 {
-		t.Error("GetFocusPath should return a non-empty path")
-	}
-}
-
-// TestScreenReaderManager tests the screen reader manager functionality
-func TestScreenReaderManager(t *testing.T) {
-	config := NewAccessibilityConfig()
-	theme := NewTheme()
-	keys := NewKeys()
-	a11y := NewA11y(config, theme, keys)
-	screenReader := NewScreenReaderManager(a11y)
-	
-	// Test screen reader manager creation
-	if screenReader == nil {
-		t.Fatal("Screen reader manager should not be nil")
-	}
-	
-	// Test adding announcements
-	screenReader.AddAnnouncement("test_id", "test message", AnnouncementImportant, "test context", false)
-	
-	// Test getting announcements
-	announcements := screenReader.GetAnnouncements()
-	if len(announcements) == 0 {
-		t.Error("GetAnnouncements should return announcements")
-	}
-	
-	// Test getting latest announcement
-	latest := screenReader.GetLatestAnnouncement()
-	if latest == nil {
-		t.Error("GetLatestAnnouncement should return the latest announcement")
-	}
-	
-	// Test clearing announcements
-	screenReader.ClearAnnouncements()
-	announcements = screenReader.GetAnnouncements()
-	if len(announcements) != 0 {
-		t.Error("ClearAnnouncements should remove all announcements")
-	}
-}
-
-// TestComponents tests the UI components
-func TestComponents(t *testing.T) {
-	theme := NewTheme()
-	keys := NewKeys()
-	
-	// Test button
-	button := NewButton("test_button", "Test Button", func() tea.Cmd { return nil }, theme, keys)
-	if button == nil {
-		t.Fatal("Button should not be nil")
-	}
-	
-	if button.GetID() != "test_button" {
-		t.Error("Button ID should match")
-	}
-	
-	// Test input
-	input := NewInput("test_input", "Test Input", theme, keys)
-	if input == nil {
-		t.Fatal("Input should not be nil")
-	}
-	
-	if input.GetID() != "test_input" {
-		t.Error("Input ID should match")
-	}
-	
-	// Test list
-	list := NewList("test_list", 10, theme, keys)
-	if list == nil {
-		t.Fatal("List should not be nil")
-	}
-	
-	if list.GetID() != "test_list" {
-		t.Error("List ID should match")
-	}
-	
-	// Test container
-	container := NewContainer("test_container", "Test Container", theme, keys)
-	if container == nil {
-		t.Fatal("Container should not be nil")
-	}
-	
-	if container.GetID() != "test_container" {
-		t.Error("Container ID should match")
-	}
-	
-	// Test text
-	text := NewText("test_text", "Test Text", theme, keys)
-	if text == nil {
-		t.Fatal("Text should not be nil")
-	}
-	
-	if text.GetID() != "test_text" {
-		t.Error("Text ID should match")
-	}
-	
-	// Test spinner
-	spinner := NewSpinner("test_spinner", theme, keys)
-	if spinner == nil {
-		t.Fatal("Spinner should not be nil")
-	}
-	
-	if spinner.GetID() != "test_spinner" {
-		t.Error("Spinner ID should match")
-	}
-}
-
-// TestIntegrationLayer tests the integration layer functionality
-func TestIntegrationLayer(t *testing.T) {
-	integration := NewIntegrationLayer()
-	
-	// Test integration creation
-	if integration == nil {
-		t.Fatal("Integration layer should not be nil")
-	}
-	
-	// Test screen manager
-	screenManager := integration.ScreenManager
-	if screenManager == nil {
-		t.Fatal("Screen manager should not be nil")
-	}
-	
-	// Test data manager
-	dataManager := integration.DataManager
-	if dataManager == nil {
-		t.Fatal("Data manager should not be nil")
-	}
-	
-	// Test event bus
-	eventBus := integration.EventBus
-	if eventBus == nil {
-		t.Fatal("Event bus should not be nil")
-	}
-	
-	// Test setting and getting shared data
-	dataManager.SetSharedData("test_key", "test_value")
-	value, exists := dataManager.GetSharedData("test_key")
-	if !exists || value != "test_value" {
-		t.Error("Shared data should be set and retrieved correctly")
-	}
-	
-	// Test caching
-	dataManager.CacheData("cache_key", "cached_value")
-	cachedValue, exists := dataManager.GetCachedData("cache_key")
-	if !exists || cachedValue != "cached_value" {
-		t.Error("Cached data should be set and retrieved correctly")
-	}
-	
-	// Test event bus subscriptions
-	channel := eventBus.Subscribe("test_event")
-	eventBus.Publish(Event{Type: "test_event", Payload: "test_payload", Timestamp: time.Now(), Sender: ScreenDashboard})
-	
-	select {
-	case event := <-channel:
-		if event.Type != "test_event" {
-			t.Error("Event type should match")
+func TestScreenTypeString(t *testing.T) {
+	tests := []struct {
+		st   ScreenType
+		want string
+	}{
+		{ScreenDashboard, "dashboard"},
+		{ScreenDoctor, "doctor"},
+		{ScreenSettings, "settings"},
+		{ScreenType(99), "unknown"},
+	}
+	for _, tc := range tests {
+		if got := tc.st.String(); got != tc.want {
+			t.Errorf("ScreenType(%d).String() = %q, want %q", tc.st, got, tc.want)
 		}
-	default:
-		t.Error("Should receive published event")
 	}
 }
 
-// TestTUI tests the TUI application
-func TestTUI(t *testing.T) {
-	tui := NewTUI()
-	
-	// Test TUI creation
-	if tui == nil {
-		t.Fatal("TUI should not be nil")
+func TestAppModelInit(t *testing.T) {
+	m := NewAppModel(t.TempDir())
+	cmd := m.Init() // PrecomputeStyles + placeholder dashboard
+
+	if m.ActiveScreen == nil {
+		t.Fatal("Init must set an active screen")
 	}
-	
-	// Test screen manager
-	screenManager := tui.GetScreenManager()
-	if screenManager == nil {
-		t.Fatal("Screen manager should not be nil")
+	if m.ActiveScreen.GetID() != "dashboard" {
+		t.Errorf("active screen = %q, want dashboard", m.ActiveScreen.GetID())
 	}
-	
-	// Test data manager
-	dataManager := tui.GetDataManager()
-	if dataManager == nil {
-		t.Fatal("Data manager should not be nil")
+	if m.CurrentScreen != ScreenDashboard {
+		t.Errorf("CurrentScreen = %v", m.CurrentScreen)
 	}
-	
-	// Test event bus
-	eventBus := tui.GetEventBus()
-	if eventBus == nil {
-		t.Fatal("Event bus should not be nil")
+	if cmd != nil {
+		t.Error("placeholder Init must not spawn commands")
 	}
-	
-	// Test shared data operations
-	tui.SetSharedData("test_key", "test_value")
-	value, exists := tui.GetSharedData("test_key")
-	if !exists || value != "test_value" {
-		t.Error("Shared data should be set and retrieved correctly")
+	if m.ScreenReader.GetLatestAnnouncement() == nil {
+		t.Error("app start must be announced to screen reader (§19.3)")
 	}
-	
-	// Test event subscriptions
-	channel := tui.SubscribeToEvent("test_event")
-	tui.PublishEvent("test_event", "test_payload", ScreenDashboard)
-	
-	select {
-	case event := <-channel:
-		if event.Type != "test_event" {
-			t.Error("Event type should match")
+}
+
+// keyMsg собирает реалистичное для bubbletea нажатие (KeyRunes + Runes).
+func keyMsg(r rune) tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+}
+
+func TestAppModelGlobalKeys(t *testing.T) {
+	t.Run("ctrl+c and esc quit", func(t *testing.T) {
+		for _, km := range []tea.KeyMsg{{Type: tea.KeyCtrlC}, {Type: tea.KeyEsc}} {
+			m := NewAppModel(t.TempDir())
+			_ = m.Init()
+			_, cmd := m.Update(km)
+			if !m.Quit {
+				t.Errorf("%v must set Quit", km)
+			}
+			if _, ok := cmd().(tea.QuitMsg); !ok {
+				t.Errorf("%v must produce QuitMsg", km)
+			}
 		}
-	default:
-		t.Error("Should receive published event")
+	})
+
+	t.Run("? returns HelpMsg", func(t *testing.T) {
+		m := NewAppModel(t.TempDir())
+		_ = m.Init()
+		_, cmd := m.Update(keyMsg('?'))
+		if cmd == nil {
+			t.Fatal("? must return help command")
+		}
+		if _, ok := cmd().(HelpMsg); !ok {
+			t.Error("? must produce HelpMsg")
+		}
+	})
+
+	t.Run("r returns RefreshScreenMsg", func(t *testing.T) {
+		m := NewAppModel(t.TempDir())
+		_ = m.Init()
+		_, cmd := m.Update(keyMsg('r'))
+		if cmd == nil {
+			t.Fatal("r must return refresh command")
+		}
+		if _, ok := cmd().(RefreshScreenMsg); !ok {
+			t.Error("r must produce RefreshScreenMsg")
+		}
+	})
+
+	t.Run("1-3 switch screens via ScreenSwitchMsg (§18.5)", func(t *testing.T) {
+		want := map[rune]ScreenType{'1': ScreenDashboard, '2': ScreenDoctor, '3': ScreenSettings}
+		for key, screenType := range want {
+			m := NewAppModel(t.TempDir())
+			_ = m.Init()
+			_, cmd := m.Update(keyMsg(key))
+			if cmd == nil {
+				t.Fatalf("%c must return switch command", key)
+			}
+			msg, ok := cmd().(ScreenSwitchMsg)
+			if !ok || msg.ScreenType != screenType {
+				t.Errorf("%c produced %#v, want ScreenSwitchMsg{%v}", key, msg, screenType)
+			}
+		}
+	})
+}
+
+// countingScreen — экран-счётчик для проверки, что switchScreen/refresh
+// действительно вызывают Init (PlaceholderScreen.Init возвращает nil и
+// tea.Batch(nil) даёт nil — сигнал был бы неотличим от «не вызвано»).
+type countingScreen struct {
+	id     string
+	inits  int
+}
+
+func (c *countingScreen) Init() tea.Cmd {
+	c.inits++
+	return func() tea.Msg { return struct{ Screen string }{c.id} }
+}
+
+func (c *countingScreen) Update(msg tea.Msg) (Screen, tea.Cmd) { return c, nil }
+func (c *countingScreen) View() string                         { return "view-" + c.id }
+func (c *countingScreen) GetID() string                        { return c.id }
+func (c *countingScreen) IsActive() bool                       { return true }
+func (c *countingScreen) SetActive(bool)                       {}
+
+func TestAppModelScreenSwitchingAndRefresh(t *testing.T) {
+	m := NewAppModel(t.TempDir())
+	_ = m.Init()
+	doc := &countingScreen{id: "doctor"}
+	settings := &countingScreen{id: "settings"}
+	m.SetScreen(ScreenDoctor, doc)
+	m.SetScreen(ScreenSettings, settings)
+
+	// Переключение на зарегистрированный экран: смена + Init нового экрана.
+	_, cmd := m.Update(ScreenSwitchMsg{ScreenType: ScreenDoctor})
+	if m.CurrentScreen != ScreenDoctor || m.ActiveScreen.GetID() != "doctor" {
+		t.Errorf("switch failed: screen=%v active=%q", m.CurrentScreen, m.ActiveScreen.GetID())
+	}
+	if doc.inits != 1 {
+		t.Errorf("screen switch must run Init once, ran %d times", doc.inits)
+	}
+	if cmd == nil {
+		t.Error("Update must return the batched Init command")
+	}
+
+	// Незарегистрированный экран — игнорируется (MVP scope, §18.5).
+	m.Update(ScreenSwitchMsg{ScreenType: ScreenType(42)})
+	if m.CurrentScreen != ScreenDoctor {
+		t.Error("unregistered screen must be ignored")
+	}
+
+	// Повторное сообщение того же типа — no-op.
+	m.Update(ScreenSwitchMsg{ScreenType: ScreenDoctor})
+	if doc.inits != 1 {
+		t.Errorf("same-screen switch must be a no-op, Init ran %d times", doc.inits)
+	}
+
+	// Refresh — переинициализирует активный экран.
+	_, refreshCmd := m.Update(RefreshScreenMsg{Force: true})
+	if doc.inits != 2 {
+		t.Errorf("RefreshScreenMsg must run Init, ran %d times", doc.inits)
+	}
+	if refreshCmd == nil {
+		t.Error("Update must return the batched Init command")
+	}
+
+	// HelpMsg возвращает help-команду.
+	_, helpCmd := m.Update(HelpMsg{ScreenID: "dashboard"})
+	if _, ok := helpCmd().(HelpMsg); !ok {
+		t.Error("HelpMsg must loop back to help command")
+	}
+}
+
+func TestAppModelPerformanceWarningAnnounced(t *testing.T) {
+	m := NewAppModel(t.TempDir())
+	_ = m.Init()
+	// §19.3: объявления уходят в stderr (вне потока TUI-рендера).
+	m.A11y.Config.ScreenReader = true
+	m.A11y.Config.AnnounceChanges = true
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldStderr := os.Stderr
+	os.Stderr = w
+	_, cmd := m.Update(PerformanceWarningMsg{Level: AnnouncementWarning, Message: "frame render slow"})
+	w.Close()
+	os.Stderr = oldStderr
+	out, _ := io.ReadAll(r)
+
+	if cmd != nil {
+		t.Error("performance warning must not spawn commands")
+	}
+	if !strings.Contains(string(out), "frame render slow") {
+		t.Errorf("warning must be announced to stderr, got %q", out)
+	}
+}
+
+func TestAppModelView(t *testing.T) {
+	m := NewAppModel(t.TempDir())
+	_ = m.Init()
+	_, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	if m.Width != 100 || m.Height != 30 {
+		t.Fatalf("WindowSizeMsg not applied: %dx%d", m.Width, m.Height)
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "Screen: dashboard") {
+		t.Errorf("view must show status bar, got:\n%s", view)
+	}
+	if !strings.Contains(view, "Press ? for help") {
+		t.Errorf("status bar must hint help key, got:\n%s", view)
+	}
+	if !strings.Contains(view, "dashboard screen") {
+		t.Errorf("view must render active screen, got:\n%s", view)
+	}
+
+	// Quit — прощальный экран.
+	m.Quit = true
+	if got := m.View(); got != "Goodbye!" {
+		t.Errorf("quit view = %q", got)
+	}
+}
+
+func TestAppModelLargeTextModeRenders(t *testing.T) {
+	m := NewAppModel(t.TempDir())
+	_ = m.Init()
+	_, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m.A11y.Config.LargeText = true
+
+	view := m.View()
+	if view == "" {
+		t.Fatal("large-text view must not be empty")
+	}
+	if !strings.Contains(view, "Screen: dashboard") {
+		t.Error("large-text mode must keep content")
+	}
+}
+
+func TestAppModelAccessors(t *testing.T) {
+	m := NewAppModel(t.TempDir())
+	_ = m.Init()
+	doc := &PlaceholderScreen{ID: "doctor", Theme: m.Theme}
+	m.SetScreen(ScreenDoctor, doc)
+
+	if m.GetScreen(ScreenDoctor) != Screen(doc) {
+		t.Error("GetScreen must return registered screen")
+	}
+	if m.GetScreen(ScreenSettings) != nil {
+		t.Error("GetScreen for unregistered type must be nil")
+	}
+	if m.GetCurrentScreen() != m.ActiveScreen {
+		t.Error("GetCurrentScreen must return ActiveScreen")
+	}
+	if m.GetScreenType() != m.CurrentScreen {
+		t.Error("GetScreenType must return CurrentScreen")
+	}
+
+	// SetScreen текущего типа сразу заменяет активный экран.
+	m.SetScreen(ScreenDashboard, &PlaceholderScreen{ID: "dashboard-2", Theme: m.Theme})
+	if m.ActiveScreen.GetID() != "dashboard-2" {
+		t.Errorf("SetScreen(current) must swap ActiveScreen, got %q", m.ActiveScreen.GetID())
 	}
 }

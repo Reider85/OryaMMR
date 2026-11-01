@@ -1,0 +1,16 @@
+┌──────────────────────────────────────────┐
+│[1;48;5;232mCodeAuthorityFirst 0.4.1-test — [1;38;5;75monboarding[0m[0m│
+└──────────────────────────────────────────┘
+▸ Step 2/4: Detection
+──────────────────────────────
+Detecting available agents...
+
+⠋ Detecting agents...
+
+No agents detected? You can:
+  [i] install opencode
+  [c] install Claude Code
+  [Enter] LSP-fallback only
+  [Esc] back
+
+[2;48;5;232monboarding focus:                                      [Enter] next  [Esc] back  [q] abort  [?] help[0m

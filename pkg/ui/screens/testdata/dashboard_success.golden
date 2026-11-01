@@ -1,0 +1,41 @@
+┌─────────────────────────────────────────┐
+│[1;48;5;232mCodeAuthorityFirst 0.4.1-test — [1;38;5;75mdashboard[0m[0m│
+└─────────────────────────────────────────┘
+▸ Today
+┌──────────────────┐
+  5 cards due
+  3 pending decisions
+  1 new blindspots
+  
+  └──────────────────┘
+  Authorship Score
+┌──────────────────┐
+  ACS 3.8 / target 3.5
+  Recall  72%
+  Coverage 64%
+  30-day: →
+  └──────────────────┘
+  Active Agents
+┌──────────────────┐
+  ✓ opencode (healthy)
+  ⚠ claude-code (degraded)
+  
+  
+  └──────────────────┘
+
+  Recent Decisions
+┌─────────────────────────────────────┐
+  • Use token bucket for rate limiting
+  • Prefer YAML over SQLite
+  
+  
+  └─────────────────────────────────────┘
+  Cross-repo
+┌──────────────────┐
+  ⚠ OryaAgent ← Sec
+    stale decision
+  
+  
+  └──────────────────┘
+
+[2;48;5;232mdashboard focus:                                      [Tab] widgets  [r] refresh  [?] help  [q] quit[0m
